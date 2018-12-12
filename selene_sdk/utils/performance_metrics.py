@@ -9,14 +9,11 @@ import os
 import numpy as np
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import precision_recall_curve
-from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
-
 
 logger = logging.getLogger("selene")
 
-
-Metric = namedtuple("Metric", ["fn", "data"])
+Metric = namedtuple("Metric", ["fn", "data", "input_dim"])
 """
 A tuple containing a metric function and the results from applying that
 metric to some values.
@@ -27,15 +24,60 @@ fn : types.FunctionType
     A metric.
 data : list(float)
     A list holding the results from applying the metric.
-
+input_dim : int
+    The number of dimensions for input of the metric function. 
+    Valid values are 1 (1D input and metric returns one score) or 
+    2 (2D array input and metric returns one score per column of 
+    input array).
+    
 Attributes
 ----------
 fn : types.FunctionType
     A metric.
 data : list(float)
     A list holding the results from applying the metric.
-
+input_dim : int
+    The required number of dimensions for metric_fn inpiut. 
+    Valid values are1 (1D input and metric returns one score) or 
+    2 (2D array input and metric returns one score per column 
+    of the input array).
 """
+
+
+def auc_u_test(labels, predictions):
+    """
+    Fast AUROC computation using its connection with 
+    u-statistic 
+
+    Parameters
+    ----------
+    labels : numpy.ndarray
+        2D array of labels. AUROC will be computed per column.
+    predictions : numpy.ndarray
+        2D array of predictions. Must be the same size as `labels`.
+
+    Returns
+    ---------
+        numpy.ndarray
+        1D array of AUROC scores. The length equals to the number 
+        of columns in `labels` and `predictions`.
+
+    """
+    if not np.all(labels.shape == predictions.shape):
+        raise ValueError('labels and predictions must have the same size.')
+    len_pos = np.sum(labels==1,axis=0)
+    len_neg = labels.shape[0] - len_pos
+    rank_sum = np.sum((predictions.argsort(axis=0).argsort(axis=0))*\
+        (labels==1),axis=0)
+    u_value = rank_sum - (len_pos * (len_pos + 1)) / 2
+    auc = u_value / (len_pos * len_neg)
+    return auc
+    
+metric_input_dims = {
+    average_precision_score : 1,
+    roc_auc_score : 1,
+    auc_u_test : 2    
+}
 
 
 def visualize_roc_curves(prediction,
@@ -171,7 +213,7 @@ def visualize_precision_recall_curves(
                 dpi=dpi)
 
 
-def compute_score(prediction, target, metric_fn,
+def compute_score(prediction, target, metric_fn, input_dim=1,
                   report_gt_feature_n_positives=10):
     """
     Using a user-specified metric, computes the distance between
@@ -186,6 +228,11 @@ def compute_score(prediction, target, metric_fn,
     metric_fn : types.FunctionType
         A metric that can measure the distance between the prediction
         and target variables.
+    input_dim : int, optional
+        Default is 1. The required number of dimensions for metric_fn 
+        input. Valid values are 1 (1D input and metric returns one score) 
+        or 2 (2D array input and metric returns one score per column of 
+        input array).
     report_gt_feature_n_positives : int, optional
         Default is 10. The minimum number of positive examples for a
         feature in order to compute the score for it.
@@ -198,19 +245,29 @@ def compute_score(prediction, target, metric_fn,
         no features meeting our filtering thresholds, will return
         `(None, [])`.
     """
-    feature_scores = np.ones(target.shape[1]) * np.nan
-    for index, feature_preds in enumerate(prediction.T):
-        feature_targets = target[:, index]
-        if len(np.unique(feature_targets)) > 0 and \
-               np.count_nonzero(feature_targets) > report_gt_feature_n_positives:
-            try:
-                feature_scores[index] = metric_fn(
-                    feature_targets, feature_preds)
-            except ValueError:  # do I need to make this more generic?
-                continue
-    valid_feature_scores = [s for s in feature_scores if not np.isnan(s)] # Allow 0 or negative values.
-    if not valid_feature_scores:
-        return None, feature_scores
+    if input_dim == 1:
+        feature_scores = np.ones(target.shape[1]) * np.nan
+        for index, feature_preds in enumerate(prediction.T):
+            feature_targets = target[:, index]
+            if len(np.unique(feature_targets)) > 0 and \
+                   np.count_nonzero(feature_targets) > report_gt_feature_n_positives:
+                try:
+                    feature_scores[index] = metric_fn(
+                        feature_targets, feature_preds)
+                except ValueError:  # do I need to make this more generic?
+                    continue
+        valid_feature_scores = [s for s in feature_scores if not np.isnan(s)] # Allow 0 or negative values.
+        if not valid_feature_scores:
+            return None, feature_scores
+    else:
+        feature_scores = metric_fn(target, prediction)
+        valid_scores = np.count_nonzero(target, axis=0) > report_gt_feature_n_positives
+        valid_scores *= ~np.isnan(feature_scores)
+        if np.sum(valid_scores) == 0:
+            return None, feature_scores
+        else:
+            valid_feature_scores = feature_scores[valid_scores]
+    
     average_score = np.average(valid_feature_scores)
     return average_score, feature_scores
 
@@ -263,7 +320,7 @@ class PerformanceMetrics(object):
     metrics : dict
         A dictionary that maps metric names (`str`) to metric functions.
         By default, this contains `"roc_auc"`, which maps to
-        `sklearn.metrics.roc_auc_score`, and `"average_precision"`,
+        `selene_sdk.utils.performancs_metrics.auc_u_test`, and `"average_precision"`,
         which maps to `sklearn.metrics.average_precision_score`.
 
 
@@ -287,7 +344,7 @@ class PerformanceMetrics(object):
     def __init__(self,
                  get_feature_from_index_fn,
                  report_gt_feature_n_positives=10,
-                 metrics=dict(roc_auc=roc_auc_score, average_precision=average_precision_score)):
+                 metrics=dict(roc_auc=auc_u_test, average_precision=average_precision_score)):
         """
         Creates a new object of the `PerformanceMetrics` class.
         """
@@ -295,7 +352,16 @@ class PerformanceMetrics(object):
         self.get_feature_from_index = get_feature_from_index_fn
         self.metrics = dict()
         for k, v in metrics.items():
-            self.metrics[k] = Metric(fn=v, data=[])
+            if isinstance(v, tuple):
+                self.metrics[k] = Metric(fn=v[0], data=[], input_dim=v[1])
+            else:
+                if v in metric_input_dims:
+                    self.metrics[k] = Metric(fn=v, data=[], input_dim=metric_input_dims[v])
+                else:
+                    raise ValueError("Input dim must be specificied for custom"
+                         " metric functions. For example, to specify a metric function `my_fun`"
+                         " that takes predictions and labels which are 1D arrays, "
+                         "use `metrics=dict(my_fun=(my_fun, 1))`.")
 
     def add_metric(self, name, metric_fn):
         """
@@ -355,7 +421,7 @@ class PerformanceMetrics(object):
         metric_scores = {}
         for name, metric in self.metrics.items():
             avg_score, feature_scores = compute_score(
-                prediction, target, metric.fn,
+                prediction, target, metric.fn, input_dim = metric.input_dim,
                 report_gt_feature_n_positives=self.skip_threshold)
             metric.data.append(feature_scores)
             metric_scores[name] = avg_score
