@@ -18,7 +18,6 @@ Options:
 """
 from docopt import docopt
 
-from selene_sdk.utils import load_path
 from selene_sdk.utils import parse_configs_and_run
 from selene_sdk import __version__
 
@@ -28,5 +27,4 @@ if __name__ == "__main__":
         __doc__,
         version=__version__)
 
-    configs = load_path(arguments["<config-yml>"], instantiate=False)
-    parse_configs_and_run(configs, lr=arguments["--lr"])
+    parse_configs_and_run(arguments["<config-yml>"], lr=arguments["--lr"])
