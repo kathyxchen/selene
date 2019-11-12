@@ -201,27 +201,12 @@ def compute_score(prediction, target, metric_fn,
         `(None, [])`.
     """
 
-    def _compute_score(feature_preds, feature_targets,
-                       metric_fn, report_gt_feature_n_positives):
-        if len(np.unique(feature_targets)) > 0 and \
-               np.count_nonzero(feature_targets) > report_gt_feature_n_positives:
-            try:
-                score = metric_fn(
-                    feature_targets, feature_preds)
-                return score
-            except ValueError:  # do I need to make this more generic?
-                return np.nan
-        else:
-            return np.nan
-    with Parallel(n_jobs=num_workers) as parallel:
-        feature_scores = parallel(
-            delayed(_compute_score)(prediction[:, i],
-                                    target[:, i].ravel(),
-                                    metric_fn,
-                                    report_gt_feature_n_positives)
-            for i in range(prediction.shape[1]))
-    valid_feature_scores = [s for s in feature_scores if not np.isnan(s)] # Allow 0 or negative values.
-    if not valid_feature_scores:
+    feature_scores = metric_fn(target, prediction)
+    valid_scores = np.count_nonzero(target, axis=0) > report_gt_feature_n_positives
+    #TODO: is this needed?
+    valid_scores *= ~np.isnan(feature_scores)
+    valid_feature_scores = feature_scores[valid_scores]
+    if np.sum(valid_feature_scores)==0:
         return None, feature_scores
     average_score = np.average(valid_feature_scores)
     return average_score, feature_scores
