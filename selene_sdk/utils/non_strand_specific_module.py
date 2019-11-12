@@ -36,6 +36,11 @@ class NonStrandSpecific(Module):
         reverse-complement of the input into `model`. The mode specifies
         whether we should output the mean or max of the predictions as
         the non-strand specific prediction.
+    output_spatial_dim : int or None, optional
+        Specify the output dimension to be flipped for the reversed sequence
+        input. It is important to specify this when output has a spatial
+        dimension.
+
 
     Attributes
     ----------
@@ -43,10 +48,13 @@ class NonStrandSpecific(Module):
         The user-specified model architecture.
     mode : {'mean', 'max'}
         How to handle outputting a non-strand specific prediction.
+    output_spatial_dim : int or None
+        The output dimension to be flipped for the reversed sequence input.
+
 
     """
 
-    def __init__(self, model, mode="mean"):
+    def __init__(self, model, mode="mean", output_spatial_dim=2):
         super(NonStrandSpecific, self).__init__()
 
         self.model = model
@@ -55,6 +63,7 @@ class NonStrandSpecific(Module):
             raise ValueError("Mode should be one of 'mean' or 'max' but was"
                              "{0}.".format(mode))
         self.mode = mode
+        self.output_spatial_dim = output_spatial_dim
 
     def forward(self, input):
         reverse_input = _flip(
@@ -63,6 +72,12 @@ class NonStrandSpecific(Module):
         output = self.model.forward(input)
         output_from_rev = self.model.forward(
             reverse_input)
+
+        #TODO: handle this better
+        if output_from_rev.dim() > self.output_spatial_dim:
+            output_from_rev = torch.flip(output_from_rev, (self.output_spatial_dim,))
+
+
         if self.mode == "mean":
             return (output + output_from_rev) / 2
         else:
