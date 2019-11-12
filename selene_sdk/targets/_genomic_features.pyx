@@ -17,7 +17,7 @@ def _fast_get_feature_data(int start,
                            rows):
     cdef int n_features = len(feature_index_dict)
     cdef int query_length = end - start
-    cdef int n_bins = query_length / step_size
+    cdef int n_bins = int(query_length / step_size)
     cdef int feature_start, feature_end, index_start, index_end, index_feat
     cdef np.ndarray[DTYPE_t, ndim=2] encoding = np.zeros(
         (query_length, n_features), dtype=np.int)
