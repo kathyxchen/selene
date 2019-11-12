@@ -391,8 +391,7 @@ class GenomicFeatures(Target):
             rows = self._query_tabix(chrom, center, center + 1)
             if rows is None:
                 continue
-            tgts_start = i * self.n_features
             for r in rows:
                 fidx = self.feature_index_dict[r[3]]
-                targets[tgts_start + fidx] = True
+                targets[fidx * n_bins + i] = True
         return targets
