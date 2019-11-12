@@ -130,7 +130,7 @@ class RandomPositionsSampler(OnlineSampler):
                  target_path,
                  features,
                  seed=436,
-                 validation_holdout=['chr6', 'chr7'],
+                 validation_holdout=['chr10'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1000,
                  bin_size=200,
