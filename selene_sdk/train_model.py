@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from scipy.stats import rankdata
@@ -30,6 +31,14 @@ def auc_u_test(labels, predictions):
     len_pos = int(np.sum(labels))
     len_neg = len(labels) - len_pos
     rank_sum = np.sum(rankdata(predictions)[labels == 1])
+    u_value = rank_sum - (len_pos * (len_pos + 1)) / 2
+    auc = u_value / (len_pos * len_neg)
+    return auc
+
+def auc_u_test_batch(labels, predictions):
+    len_pos = np.sum(labels==1,axis=0)
+    len_neg = labels.shape[0] - len_pos
+    rank_sum = np.sum((predictions.argsort(axis=0).argsort(axis=0))*(labels==1),axis=0)
     u_value = rank_sum - (len_pos * (len_pos + 1)) / 2
     auc = u_value / (len_pos * len_neg)
     return auc
@@ -204,10 +213,17 @@ class TrainModel(object):
                               average_precision=average_precision_score),
                  compute_metrics_on=None,
                  multidatasets=False,
-                 disable_scheduler=False):
+                 disable_scheduler=False,
+                 update_interval=1,
+                 distributed=False,
+                 rank=None,
+                 world_size=None,
+                 gpu_id=None
+):
         """
         Constructs a new `TrainModel` object.
         """
+
         self.model = model
         self.sampler = data_sampler
         self.criterion = loss_criterion
@@ -223,19 +239,43 @@ class TrainModel(object):
             self.nth_step_save_checkpoint = save_checkpoint_every_n_steps
 
         self.save_new_checkpoints = save_new_checkpoints_after_n_steps
-        torch.set_num_threads(1)  #cpu_n_threads)
+        torch.set_num_threads(cpu_n_threads)
+	
+        self.distributed = distributed
+        self.rank = rank
+        self.world_size = world_size
+        if self.distributed:
+            assert rank is not None
+            assert world_size is not None
+            self.batch_size = int(self.batch_size / self.world_size)
+            dist.init_process_group(backend='nccl', init_method='env://',
+                                world_size=self.world_size, rank=self.rank)
+            logger.debug("Initialize process group with rank {0} in "
+                         "world size {1}".format(self.rank, self.world_size))
 
         self.use_cuda = use_cuda
         self.data_parallel = data_parallel
-
-        if self.data_parallel:
-            self.model = nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
-            logger.debug("Wrapped model in DataParallel")
+        self.gpu_id = gpu_id
 
         if self.use_cuda:
-            self.model.cuda()
-            self.criterion.cuda()
+            if self.distributed and self.gpu_id is not None:
+                torch.cuda.set_device(self.gpu_id)
+                self.model.cuda(self.gpu_id)
+                self.criterion.cuda(self.gpu_id)
+            else:
+                self.model.cuda()
+                self.criterion.cuda()
             logger.debug("Set modules to use CUDA")
+            
+        if self.distributed:
+            if self.gpu_id is None:
+                self.model = nn.parallel.DistributedDataParallel(model, device_ids=range(torch.cuda.device_count()))
+            else:
+                self.model = nn.parallel.DistributedDataParallel(model, device_ids=[self.gpu_id])
+            logger.debug("Wrapped model in DistributedDataParallel")
+        elif self.data_parallel:
+            self.model = nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+            logger.debug("Wrapped model in DataParallel")
 
         os.makedirs(output_dir, exist_ok=True)
         self.output_dir = output_dir
@@ -251,7 +291,7 @@ class TrainModel(object):
         self._validation_metrics = PerformanceMetrics(
             self.sampler.get_feature_from_index,
             report_gt_feature_n_positives=report_gt_feature_n_positives,
-            metrics=dict(roc_auc_approx=auc_u_test),
+            metrics=dict(roc_auc=auc_u_test_batch),
             num_workers=cpu_n_threads)
 
         if "test" in self.sampler.modes:
@@ -296,6 +336,8 @@ class TrainModel(object):
 
         self.multidatasets  = multidatasets
         self.disable_scheduler = disable_scheduler
+        self.update_interval = update_interval
+
 
     def _create_validation_set(self, n_samples=None, compute_metrics_on=None):
         """
@@ -404,14 +446,20 @@ class TrainModel(object):
                         self.model.current_classifier = self._train_sampler.current_dataset
 
             predictions = self.model.forward(inputs.transpose(1, 2))
-            assert (predictions.data.cpu().numpy().all() >= 0. and
-                    predictions.data.cpu().numpy().all() <= 1.)
-            assert (targets.data.cpu().numpy().all() >= 0. and
-                    targets.data.cpu().numpy().all() <= 1.)
+            #TODO: do we still need this?
+            #assert (predictions.data.cpu().numpy().all() >= 0. and
+            #        predictions.data.cpu().numpy().all() <= 1.)
+            #assert (targets.data.cpu().numpy().all() >= 0. and
+            #        targets.data.cpu().numpy().all() <= 1.)
+            predictions = predictions.view(targets.size())
             loss = self.criterion(predictions, targets)
-            self.optimizer.zero_grad()
+
+            if i % self.update_interval==0:
+                self.optimizer.zero_grad()
+
             loss.backward()
-            self.optimizer.step()
+            if (i+1) %  self.update_interval == 0:
+                self.optimizer.step()
             loss_value = loss.item()
             t_f = time()
 
@@ -422,7 +470,8 @@ class TrainModel(object):
             if i % 100 == 0:
                 logger.debug("{0}: {1} s to propagate sample".format(i, t_f - t_i))
             time_per_step.append(t_f - t_i)
-            if i % self.nth_step_save_checkpoint == 0:
+            if i % self.nth_step_save_checkpoint == 0 and \
+                (self.rank is None or self.rank == 0):
                 checkpoint_dict = {
                     "step": i,
                     "arch": self.model.__class__.__name__,
@@ -510,6 +559,7 @@ class TrainModel(object):
         targets = Variable(targets)
 
         predictions = self.model(inputs.transpose(1, 2))
+        predictions = predictions.view(targets.size())
         loss = self.criterion(predictions, targets)
 
         self.optimizer.zero_grad()
@@ -561,6 +611,7 @@ class TrainModel(object):
                 targets = Variable(targets)
                 predictions = self.model(
                     inputs.transpose(1, 2))
+                predictions = predictions.view(targets.size())
                 loss = self.criterion(predictions, targets)
 
                 all_predictions[count:count + remainder, :] = \
