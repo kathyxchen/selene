@@ -260,7 +260,10 @@ def execute(operations, configs, output_dir):
 
 def parse_configs_and_run(configs_file,
                           create_subdirectory=True,
-                          lr=None):
+                          lr=None,
+                          rank=None,
+                          world_size=None,
+                          gpu_id=None):
     """
     Method to parse the configuration YAML file and run each operation
     specified.
@@ -322,7 +325,14 @@ def parse_configs_and_run(configs_file,
               "configuration dict and this method's `lr` parameter. "
               "Using the `lr` value input to `parse_configs_and_run` "
               "({0}, not {1}).".format(lr, configs["lr"]))
-
+    else:
+        configs["lr"] = None
+    if "rank" not in configs["train_model"].keywords and rank != "None":
+        configs["train_model"].keywords["rank"] = int(rank)
+    if "world_size" not in configs["train_model"].keywords and world_size != "None":
+        configs["train_model"].keywords["world_size"] = int(world_size)
+    if "gpu_id" not in configs["train_model"].keywords and gpu_id != "None":
+        configs["train_model"].keywords["gpu_id"] = int(gpu_id)
     current_run_output_dir = None
     if "output_dir" not in configs and \
             ("train" in operations or "evaluate" in operations):
@@ -341,6 +351,7 @@ def parse_configs_and_run(configs_file,
             current_run_output_dir = os.path.join(
                 current_run_output_dir, strftime("%Y-%m-%d-%H-%M-%S")+'-'+randstr)
             os.makedirs(current_run_output_dir)
+
         print("Outputs and logs saved to {0}".format(
             current_run_output_dir))
 
