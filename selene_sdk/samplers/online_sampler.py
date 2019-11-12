@@ -6,6 +6,7 @@ Objects of the class `OnlineSampler`, are samplers which load examples
 """
 from abc import ABCMeta
 import os
+import sys
 import random
 
 import numpy as np
@@ -119,6 +120,7 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
                  target_path,
                  features,
                  seed=436,
+                 os_urandom_seed=False,
                  validation_holdout=['chr6', 'chr7'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1000,
@@ -139,6 +141,8 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
             save_datasets=save_datasets,
             output_dir=output_dir)
 
+        if os_urandom_seed:
+            seed = int.from_bytes(os.urandom(4), sys.byteorder)
         self.seed = seed
         np.random.seed(self.seed)
         random.seed(self.seed + 1)
