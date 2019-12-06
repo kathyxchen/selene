@@ -401,7 +401,7 @@ class TrainModel(object):
             "optimizer": self.optimizer.state_dict()
         }
         if self.save_new_checkpoints is not None and \
-                self.save_new_checkpoints >= step:
+                self.save_new_checkpoints >= self.step:
             checkpoint_filename = "checkpoint-{0}".format(
                 strftime("%m%d%H%M%S"))
             self._save_checkpoint(
