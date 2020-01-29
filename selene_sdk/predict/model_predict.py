@@ -422,7 +422,6 @@ class AnalyzeSequences(object):
         frameshifts = frameshifts.astype(int)
         for i, (label, coords) in enumerate(zip(labels, seq_coords)):
             for j, s in enumerate(frameshifts):
-                print(j)
                 encoding, contains_unk = self.reference_sequence.get_encoding_from_coords_check_unk(
                         coords[0],
                         coords[1]+s,
@@ -965,74 +964,80 @@ class AnalyzeSequences(object):
         batch_alt_seqs = []
         batch_ids = []
         t_i = time()
+        frameshifts = np.arange(np.ceil(-self.n_frames/2.0), np.ceil(self.n_frames/2.0))
+        frameshifts = frameshifts.astype(int)
         for ix, (chrom, pos, name, ref, alt, strand) in enumerate(variants):
-            # centers the sequence containing the ref allele based on the size
-            # of ref
-            center = pos + len(ref) // 2
-            start = center - self._start_radius
-            end = center + self._end_radius
-            ref_sequence_encoding, contains_unk = \
-                self.reference_sequence.get_encoding_from_coords_check_unk(
-                    chrom, start, end)
-
-            ref_encoding = self.reference_sequence.sequence_to_encoding(ref)
-            alt_sequence_encoding = _process_alt(
-                chrom, pos, ref, alt, start, end,
-                ref_sequence_encoding,
-                self.reference_sequence)
-
-            match = True
-            seq_at_ref = None
-            if len(ref) and len(ref) < self.sequence_length:
-                match, ref_sequence_encoding, seq_at_ref = _handle_standard_ref(
-                    ref_encoding,
+            for j, s in enumerate(frameshifts):
+                # centers the sequence containing the ref allele based on the size
+                # of ref
+                center = pos + len(ref) // 2
+                start = center - self._start_radius
+                end = center + self._end_radius
+                ref_sequence_encoding, contains_unk = \
+                    self.reference_sequence.get_encoding_from_coords_check_unk(
+                        chrom, start + s, end + s)
+    
+                ref_encoding = self.reference_sequence.sequence_to_encoding(ref)
+                alt_sequence_encoding = _process_alt(
+                    chrom, pos, ref, alt, start, end,
                     ref_sequence_encoding,
-                    self.sequence_length,
-                    self.reference_sequence)
-            elif len(ref) >= self.sequence_length:
-                match, ref_sequence_encoding, seq_at_ref = _handle_long_ref(
-                    ref_encoding,
-                    ref_sequence_encoding,
-                    self._start_radius,
-                    self._end_radius,
-                    self.reference_sequence)
+                    self.reference_sequence,
+                    s)
+    
+                match = True
+                seq_at_ref = None
+                if len(ref) and len(ref) < self.sequence_length:
+                    match, ref_sequence_encoding, seq_at_ref = _handle_standard_ref(
+                        ref_encoding,
+                        ref_sequence_encoding,
+                        self.sequence_length,
+                        self.reference_sequence,
+                        s)
+                elif len(ref) >= self.sequence_length:
+                    match, ref_sequence_encoding, seq_at_ref = _handle_long_ref(
+                        ref_encoding,
+                        ref_sequence_encoding,
+                        self._start_radius,
+                        self._end_radius,
+                        self.reference_sequence)
+    
+                if contains_unk:
+                    warnings.warn("For variant ({0}, {1}, {2}, {3}, {4}, {5}), "
+                               "reference sequence contains unknown base(s)"
+                               "--will be marked `True` in the `contains_unk` column "
+                               "of the .tsv or the row_labels .txt file.".format(
+                                 chrom, pos, name, ref, alt, strand))
+                if not match:
+                    warnings.warn("For variant ({0}, {1}, {2}, {3}, {4}, {5}), "
+                                  "reference does not match the reference genome. "
+                                  "Reference genome contains {6} instead. "
+                                  "Predictions/scores associated with this "
+                                  "variant--where we use '{3}' in the input "
+                                  "sequence--will be marked `False` in the `ref_match` "
+                                  "column of the .tsv or the row_labels .txt file".format(
+                                      chrom, pos, name, ref, alt, strand, seq_at_ref))
+                if strand == '-':
+                    ref_sequence_encoding = get_reverse_complement_encoding(
+                        ref_sequence_encoding,
+                        self.reference_sequence.BASES_ARR,
+                        self.reference_sequence.COMPLEMENTARY_BASE_DICT)
+                    alt_sequence_encoding = get_reverse_complement_encoding(
+                        alt_sequence_encoding,
+                        self.reference_sequence.BASES_ARR,
+                        self.reference_sequence.COMPLEMENTARY_BASE_DICT)
+                batch_ref_seqs.append(ref_sequence_encoding)
+                batch_alt_seqs.append(alt_sequence_encoding)
 
-            if contains_unk:
-                warnings.warn("For variant ({0}, {1}, {2}, {3}, {4}, {5}), "
-                           "reference sequence contains unknown base(s)"
-                           "--will be marked `True` in the `contains_unk` column "
-                           "of the .tsv or the row_labels .txt file.".format(
-                             chrom, pos, name, ref, alt, strand))
-            if not match:
-                warnings.warn("For variant ({0}, {1}, {2}, {3}, {4}, {5}), "
-                              "reference does not match the reference genome. "
-                              "Reference genome contains {6} instead. "
-                              "Predictions/scores associated with this "
-                              "variant--where we use '{3}' in the input "
-                              "sequence--will be marked `False` in the `ref_match` "
-                              "column of the .tsv or the row_labels .txt file".format(
-                                  chrom, pos, name, ref, alt, strand, seq_at_ref))
-            batch_ids.append((chrom, pos, name, ref, alt, strand, match, contains_unk))
-            if strand == '-':
-                ref_sequence_encoding = get_reverse_complement_encoding(
-                    ref_sequence_encoding,
-                    self.reference_sequence.BASES_ARR,
-                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
-                alt_sequence_encoding = get_reverse_complement_encoding(
-                    alt_sequence_encoding,
-                    self.reference_sequence.BASES_ARR,
-                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
-            batch_ref_seqs.append(ref_sequence_encoding)
-            batch_alt_seqs.append(alt_sequence_encoding)
-
-            if len(batch_ref_seqs) >= self.batch_size:
+            batch_ids.append((chrom, pos, name, ref, alt, strand, match, contains_unk))    
+            if len(batch_ref_seqs) >= self.batch_size*self.n_frames:
                 _handle_ref_alt_predictions(
                     self.model,
                     batch_ref_seqs,
                     batch_alt_seqs,
                     batch_ids,
                     reporters,
-                    use_cuda=self.use_cuda)
+                    use_cuda=self.use_cuda,
+                    n_frames=self.n_frames)
                 batch_ref_seqs = []
                 batch_alt_seqs = []
                 batch_ids = []
@@ -1049,7 +1054,8 @@ class AnalyzeSequences(object):
                 batch_alt_seqs,
                 batch_ids,
                 reporters,
-                use_cuda=self.use_cuda)
+                use_cuda=self.use_cuda,
+                n_frames=self.n_frames)
 
         for r in reporters:
             r.write_to_file()

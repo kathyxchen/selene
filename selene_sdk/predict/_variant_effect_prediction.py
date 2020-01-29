@@ -141,7 +141,8 @@ def _process_alt(chrom,
                  start,
                  end,
                  wt_sequence,
-                 reference_sequence):
+                 reference_sequence,
+                 shift):
     """
     Return the encoded sequence centered at a given allele for input into
     the model.
@@ -185,15 +186,15 @@ def _process_alt(chrom,
     alt_encoding = reference_sequence.sequence_to_encoding(alt)
     if ref_len == alt_len:  # substitution
         start_pos, end_pos = _get_ref_idxs(len(wt_sequence), ref_len)
-        sequence = np.vstack([wt_sequence[:start_pos, :],
+        sequence = np.vstack([wt_sequence[:start_pos-shift, :],
                               alt_encoding,
-                              wt_sequence[end_pos:, :]])
+                              wt_sequence[end_pos-shift:, :]])
         return sequence
     elif alt_len > ref_len:  # insertion
         start_pos, end_pos = _get_ref_idxs(len(wt_sequence), ref_len)
-        sequence = np.vstack([wt_sequence[:start_pos, :],
+        sequence = np.vstack([wt_sequence[:start_pos-shift, :],
                               alt_encoding,
-                              wt_sequence[end_pos:, :]])
+                              wt_sequence[end_pos-shift:, :]])
         trunc_s = (len(sequence) - wt_sequence.shape[0]) // 2
         trunc_e = trunc_s + wt_sequence.shape[0]
         sequence = sequence[trunc_s:trunc_e, :]
@@ -201,13 +202,13 @@ def _process_alt(chrom,
     else:  # deletion
         lhs = reference_sequence.get_sequence_from_coords(
             chrom,
-            start - ref_len // 2 + alt_len // 2,
+            start - ref_len // 2 + alt_len // 2 + shift,
             pos + 1,
             pad=True)
         rhs = reference_sequence.get_sequence_from_coords(
             chrom,
             pos + 1 + ref_len,
-            end + math.ceil(ref_len / 2.) - math.ceil(alt_len / 2.),
+            end + math.ceil(ref_len / 2.) - math.ceil(alt_len / 2.) + shift,
             pad=True)
         sequence = lhs + alt + rhs
         return reference_sequence.sequence_to_encoding(
@@ -217,13 +218,14 @@ def _process_alt(chrom,
 def _handle_standard_ref(ref_encoding,
                          seq_encoding,
                          seq_length,
-                         reference_sequence):
+                         reference_sequence,
+                         shift):
     ref_len = ref_encoding.shape[0]
 
     start_pos, end_pos = _get_ref_idxs(seq_length, ref_len)
 
     sequence_encoding_at_ref = seq_encoding[
-        start_pos:start_pos + ref_len, :]
+        start_pos - shift:start_pos + ref_len - shift, :]
     references_match = np.array_equal(
         sequence_encoding_at_ref, ref_encoding)
 
@@ -231,7 +233,7 @@ def _handle_standard_ref(ref_encoding,
     if not references_match:
         sequence_at_ref = reference_sequence.encoding_to_sequence(
             sequence_encoding_at_ref)
-        seq_encoding[start_pos:start_pos + ref_len, :] = \
+        seq_encoding[start_pos - shift:start_pos + ref_len - shift, :] = \
             ref_encoding
     return references_match, seq_encoding, sequence_at_ref
 
@@ -262,7 +264,8 @@ def _handle_ref_alt_predictions(model,
                                 batch_alt_seqs,
                                 batch_ids,
                                 reporters,
-                                use_cuda=False):
+                                use_cuda=False,
+                                n_frames=1):
     """
     Helper method for variant effect prediction. Gets the model
     predictions and updates the reporters.
@@ -290,7 +293,9 @@ def _handle_ref_alt_predictions(model,
     batch_ref_seqs = np.array(batch_ref_seqs)
     batch_alt_seqs = np.array(batch_alt_seqs)
     ref_outputs = predict(model, batch_ref_seqs, use_cuda=use_cuda)
+    ref_outputs = ref_outputs.reshape((int(ref_outputs.shape[0] / n_frames), n_frames, -1)).mean(axis=1)
     alt_outputs = predict(model, batch_alt_seqs, use_cuda=use_cuda)
+    alt_outputs = alt_outputs.reshape((int(alt_outputs.shape[0] / n_frames), n_frames, -1)).mean(axis=1)
     for r in reporters:
         if r.needs_base_pred:
             r.handle_batch_predictions(alt_outputs, batch_ids, ref_outputs)
