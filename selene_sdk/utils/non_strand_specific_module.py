@@ -55,7 +55,7 @@ class NonStrandSpecific(Module):
 
         if mode != "mean" and mode != "max":
             raise ValueError("Mode should be one of 'mean' or 'max' but was"
-                             "{0}.".format(mode))
+                             " {0}.".format(mode))
         self.mode = mode
         self.from_lua = _is_lua_trained_model(model)
 
