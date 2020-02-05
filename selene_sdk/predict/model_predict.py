@@ -430,20 +430,22 @@ class AnalyzeSequences(object):
                         pad=True)
                 if sequences is None:
                     sequences = np.zeros((self.batch_size * self.n_frames, *encoding.shape))
-                if i and i % self.batch_size == 0 and j == 0:
-                    preds = predict(self.model, sequences, use_cuda=self.use_cuda)
-                    preds = preds.reshape((int(preds.shape[0] / self.n_frames), self.n_frames, -1)).mean(axis=1)
-                    sequences = np.zeros((self.batch_size * self.n_frames, *encoding.shape))
-                    reporter.handle_batch_predictions(preds, batch_ids)
-                    batch_ids = []  
-                sequences[ (i % self.batch_size) * self.n_frames + j, :, :] = encoding
-                if contains_unk:
-                    warnings.warn("For region {0}, "
-                                    "reference sequence contains unknown base(s). "
-                                    "--will be marked `True` in the `contains_unk` column "
-                                    "of the .tsv or the row_labels .txt file.".format(
-                                      label))
-            batch_ids.append(label+(contains_unk,))
+                if j == 0:
+                    if i and i % self.batch_size == 0:
+                        preds = predict(self.model, sequences, use_cuda=self.use_cuda)
+                        preds = preds.reshape((int(preds.shape[0] / self.n_frames), self.n_frames, -1)).mean(axis=1)
+                        sequences = np.zeros((self.batch_size * self.n_frames, *encoding.shape))
+                        reporter.handle_batch_predictions(preds, batch_ids)
+                        batch_ids = []  
+                    sequences[ (i % self.batch_size) * self.n_frames + j, :, :] = encoding
+
+                    if contains_unk:
+                        warnings.warn("For region {0}, "
+                                        "reference sequence contains unknown base(s). "
+                                        "--will be marked `True` in the `contains_unk` column "
+                                        "of the .tsv or the row_labels .txt file.".format(
+                                          label))
+                    batch_ids.append(label+(contains_unk,))
 
         sequences = sequences[:((i % self.batch_size + 1) * self.n_frames), :, :]
         preds = predict(self.model, sequences, use_cuda=self.use_cuda)
