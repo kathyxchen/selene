@@ -126,27 +126,30 @@ class RandomPositionsSampler(OnlineSampler):
     """
     def __init__(self,
                  reference_sequence,
-                 target_path,
+                 target,
                  features,
                  seed=436,
                  validation_holdout=['chr6', 'chr7'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1000,
                  center_bin_to_predict=200,
-                 feature_thresholds=0.5,
+                 #feature_thresholds=0.5,
+                 position_resolution=1,
+                 random_shift=0,
                  mode="train",
                  save_datasets=[],
+                 random_strand=True,
                  output_dir=None):
         super(RandomPositionsSampler, self).__init__(
             reference_sequence,
-            target_path,
+            target,
             features,
             seed=seed,
             validation_holdout=validation_holdout,
             test_holdout=test_holdout,
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
-            feature_thresholds=feature_thresholds,
+            #feature_thresholds=feature_thresholds,
             mode=mode,
             save_datasets=save_datasets,
             output_dir=output_dir)
@@ -160,6 +163,9 @@ class RandomPositionsSampler(OnlineSampler):
         self.sample_from_intervals = []
         self.interval_lengths = []
         self.initialized = False
+        self.position_resolution = position_resolution
+        self.random_shift= random_shift
+        self.random_strand=random_strand
 
     def init(func):
         #delay initlization to allow  multiprocessing
@@ -253,10 +259,18 @@ class RandomPositionsSampler(OnlineSampler):
                   self._start_radius, self._end_radius,
                   self.surrounding_sequence_radius)
             return None
-        strand = self.STRAND_SIDES[random.randint(0, 1)]
+        if self.random_strand:
+            strand = self.STRAND_SIDES[random.randint(0, 1)]
+        else:
+            strand = '+'
+            
+        if self.random_shift > 0:
+            r = np.random.randint(-self.random_shift, self.random_shift)
+        else:
+            r = 0
         retrieved_seq = \
             self.reference_sequence.get_encoding_from_coords(
-                chrom, window_start, window_end, strand)
+                chrom, window_start+r, window_end+r, strand)
 
         if retrieved_seq.shape[0] == 0:
             logger.info("Full sequence centered at {0} position {1} "
@@ -269,16 +283,6 @@ class RandomPositionsSampler(OnlineSampler):
                         "Sampling again.".format(chrom, position))
             return None
 
-        #TODO: is this ok to remove now?
-        if retrieved_seq.shape[0] < self.sequence_length:
-            # TODO: remove after investigating this bug.
-            print("Warning: sequence retrieved for {0}, {1}, {2}, {3} "
-                  "had length less than required sequence length {4}. "
-                  "This bug will be investigated and addressed in the next "
-                  "version of Selene.".format(
-                      chrom, window_start, window_end, strand,
-                      self.sequence_length))
-            return None
 
         if self.mode in self._save_datasets:
             feature_indices = ';'.join(
@@ -333,7 +337,7 @@ class RandomPositionsSampler(OnlineSampler):
         """
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
-        targets = np.zeros((batch_size, self.n_features))
+        targets = np.zeros((batch_size, *self.target.shape))
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -348,6 +352,7 @@ class RandomPositionsSampler(OnlineSampler):
             chrom, cstart, cend = \
                 self.sample_from_intervals[rand_interval_index]
             position = np.random.randint(cstart, cend)
+            position -= position % self.position_resolution
 
             retrieve_output = self._retrieve(chrom, position)
             if not retrieve_output:

@@ -116,14 +116,13 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
 
     def __init__(self,
                  reference_sequence,
-                 target_path,
+                 target,
                  features,
                  seed=436,
                  validation_holdout=['chr6', 'chr7'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1001,
                  center_bin_to_predict=201,
-                 feature_thresholds=0.5,
                  mode="train",
                  save_datasets=[],
                  output_dir=None):
@@ -202,10 +201,7 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
 
         self.n_features = len(self._features)
 
-        self.target = GenomicFeatures(
-            target_path, self._features,
-            feature_thresholds=feature_thresholds)
-
+        self.target = target
         self._save_filehandles = {}
 
     def get_feature_from_index(self, index):
