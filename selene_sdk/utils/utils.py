@@ -71,23 +71,27 @@ def load_model_from_state_dict(state_dict, model):
         If model state dict keys do not match the keys in `state_dict`.
 
     """
-    model_keys = model.state_dict().keys()
-    state_dict_keys = state_dict.keys()
+    try:
+        model.load_state_dict(state_dict, strict=False)
+        return model
+    except:
+        model_keys = model.state_dict().keys()
+        state_dict_keys = state_dict.keys()
 
-    new_state_dict = OrderedDict()
-    for (k1, k2) in zip(model_keys, state_dict_keys):
-        value = state_dict[k2]
-        if k1 == k2:
-            new_state_dict[k2] = value
-        elif ('module' in k1 and k1[7:] == k2) \
-                or ('module' in k2 and k2[7:] == k1):
-            new_state_dict[k1] = value
-        else:
-            raise ValueError("Model state dict keys do not match "
-                             "the keys specified in `state_dict` input. "
-                             "Cannot load state into the model.")
-    model.load_state_dict(new_state_dict)
-    return model
+        new_state_dict = OrderedDict()
+        for (k1, k2) in zip(model_keys, state_dict_keys):
+            value = state_dict[k2]
+            if k1 == k2:
+                new_state_dict[k2] = value
+            elif ('module' in k1 and k2 in k1) \
+                    or ('module' in k2 and k1 in k2):
+                new_state_dict[k1] = value
+            else:
+                raise ValueError("Model state dict keys do not match "
+                                 "the keys specified in `state_dict` input. "
+                                 "Cannot load state into the model.")
+        model.load_state_dict(new_state_dict)
+        return model
 
 
 def load_features_list(input_path):
