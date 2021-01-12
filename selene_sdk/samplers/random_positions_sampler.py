@@ -54,8 +54,12 @@ class RandomPositionsSampler(OnlineSampler):
     reference_sequence : selene_sdk.sequences.Genome
         A reference sequence from which to create examples.
     target_path : str
-        Path to tabix-indexed, compressed BED file (`*.bed.gz`) of genomic
-        coordinates mapped to the genomic features we want to predict.
+        A `selene_sdk.targets.Target` object to provide the targets that 
+        we would like to predict, or a str to provide path to tabix-indexed, 
+        compressed BED file (`*.bed.gz`) of genomic
+        coordinates mapped to the genomic features we want to predict. 
+        Using str as target_path is deprecated and will be removed in the 
+        future. Please consider using a GenomicFeatures object instead.
     features : list(str)
         List of distinct features that we aim to predict.
     seed : int, optional
@@ -78,12 +82,27 @@ class RandomPositionsSampler(OnlineSampler):
         length `center_bin_to_predict`.
     feature_thresholds : float [0.0, 1.0], optional
         Default is 0.5. The `feature_threshold` to pass to the
-        `GenomicFeatures` object.
+        `GenomicFeatures` object. Use str target_path and feature_thresholds
+        is deprecated and will be removed in the future. Please consider 
+        passing GenomicFeatures object directly to target_path instead.
     mode : {'train', 'validate', 'test'}
         Default is `'train'`. The mode to run the sampler in.
     save_datasets : list(str), optional
         Default is `['test']`. The list of modes for which we should
         save the sampled data to file.
+    position_resolution : int, optional
+        Default is 1. Random coordinates will be rounded to multiples 
+        of position_resolution. This can be useful for example
+        when target stores binned data.
+    random_strand : bool, optional
+        Default is True. If True, sequences are retrieved randomly
+        from positive or negative strand, otherwise the positive
+        strand is used by default. Note that random_strand should be
+        set to False if target provides strand-specific data.
+    random_shift : int, optional
+        Default is 0. If True, the coordinates to retrieve sequence
+        are shifted by a random integer from -random_shift to 
+        random_shift independently for each sample.  
     output_dir : str or None, optional
         Default is None. The path to the directory where we should
         save sampled examples for a mode. If `save_datasets` is
@@ -117,6 +136,19 @@ class RandomPositionsSampler(OnlineSampler):
         The length of sequence falling outside of the feature detection
         bin (i.e. `bin_radius`) center, but still within the
         `sequence_length`.
+    position_resolution : int
+        Default is 1. Random coordinates will be rounded to multiples 
+        of position_resolution. This can be useful for example
+        when target stores binned data.
+    random_strand : bool
+        Default is True. If True, sequences are retrieved randomly
+        from positive or negative strand, otherwise the positive
+        strand is used by default. Note that random_strand should be
+        set to False if target provides strand-specific data.
+    random_shift : int
+        Default is 0. If True, the coordinates to retrieve sequence
+        are shifted by a random integer from -random_shift to 
+        random_shift independently for each sample.  
     modes : list(str)
         The list of modes that the sampler can be run in.
     mode : str
@@ -126,30 +158,30 @@ class RandomPositionsSampler(OnlineSampler):
     """
     def __init__(self,
                  reference_sequence,
-                 target,
+                 target_path,
                  features,
                  seed=436,
                  validation_holdout=['chr6', 'chr7'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1000,
                  center_bin_to_predict=200,
-                 #feature_thresholds=0.5,
-                 position_resolution=1,
-                 random_shift=0,
+                 feature_thresholds=0.5,
                  mode="train",
                  save_datasets=[],
+                 position_resolution=1,
+                 random_shift=0,
                  random_strand=True,
                  output_dir=None):
         super(RandomPositionsSampler, self).__init__(
             reference_sequence,
-            target,
+            target_path,
             features,
             seed=seed,
             validation_holdout=validation_holdout,
             test_holdout=test_holdout,
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
-            #feature_thresholds=feature_thresholds,
+            feature_thresholds=feature_thresholds,
             mode=mode,
             save_datasets=save_datasets,
             output_dir=output_dir)
@@ -308,7 +340,7 @@ class RandomPositionsSampler(OnlineSampler):
         self._randcache[mode]["sample_next"] = 0
 
     @init
-    def sample(self, batch_size=1, mode=None):
+    def sample(self, batch_size=1, mode=None, return_coordinates=False):
         """
         Randomly draws a mini-batch of examples and their corresponding
         labels.
@@ -338,6 +370,8 @@ class RandomPositionsSampler(OnlineSampler):
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
         targets = np.zeros((batch_size, *self.target.shape))
+        if return_coordinates:
+            coords = []
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -357,8 +391,16 @@ class RandomPositionsSampler(OnlineSampler):
             retrieve_output = self._retrieve(chrom, position)
             if not retrieve_output:
                 continue
+
+            if return_coordinates:
+                coords.append((chrom, position))
+            
             seq, seq_targets = retrieve_output
             sequences[n_samples_drawn, :, :] = seq
             targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
-        return (sequences, targets)
+            
+        if return_coordinates:
+            return sequences, targets, coords
+        else:
+            return sequences, targets
