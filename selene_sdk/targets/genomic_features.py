@@ -270,7 +270,8 @@ class GenomicFeatures(Target):
         """
         self.input_path = input_path
         self.n_features = len(features)
-
+        self.shape = (self.n_features, )
+        
         self.feature_index_dict = dict(
             [(feat, index) for index, feat in enumerate(features)])
 
