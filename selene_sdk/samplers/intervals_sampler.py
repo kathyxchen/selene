@@ -13,7 +13,6 @@ from ..utils import get_indices_and_probabilities
 
 logger = logging.getLogger(__name__)
 
-
 SampleIndices = namedtuple(
     "SampleIndices", ["indices", "weights"])
 """
@@ -46,9 +45,13 @@ class IntervalsSampler(OnlineSampler):
     ----------
     reference_sequence : selene_sdk.sequences.Sequence
         A reference sequence from which to create examples.
-    target_path : str
-        Path to tabix-indexed, compressed BED file (`*.bed.gz`) of genomic
-        coordinates mapped to the genomic features we want to predict.
+    target : str
+        A `selene_sdk.targets.Target` object to provide the targets that
+        we would like to predict, or a str to provide path to tabix-indexed,
+        compressed BED file (`*.bed.gz`) of genomic coordinates mapped to
+        the genomic features we want to predict. Using str as target will
+        be deprecated in the future. Please consider using a GenomicFeatures
+        object instead.
     features : list(str)
         List of distinct features that we aim to predict.
     intervals_path : str
@@ -139,9 +142,10 @@ class IntervalsSampler(OnlineSampler):
         the modes listed in `modes`.
 
     """
+
     def __init__(self,
                  reference_sequence,
-                 target_path,
+                 target,
                  features,
                  intervals_path,
                  sample_negative=False,
@@ -159,7 +163,7 @@ class IntervalsSampler(OnlineSampler):
         """
         super(IntervalsSampler, self).__init__(
             reference_sequence,
-            target_path,
+            target,
             features,
             seed=seed,
             validation_holdout=validation_holdout,
