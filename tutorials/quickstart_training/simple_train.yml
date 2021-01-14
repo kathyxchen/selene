@@ -19,7 +19,7 @@ sampler: !obj:selene_sdk.samplers.IntervalsSampler {
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: ./distinct_features.txt
     },
-    target_path: ./sorted_GM12878_CTCF.bed.gz,
+    target: ./sorted_GM12878_CTCF.bed.gz,
     intervals_path: ./deepsea_TF_intervals.txt,
     seed: 127,
     # A positive example is an 1000bp sequence with at least 1 class/feature annotated to it.

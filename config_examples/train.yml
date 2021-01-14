@@ -14,7 +14,7 @@ sampler: !obj:selene_sdk.samplers.IntervalsSampler {
         input_path: /path/to/reference_sequence.fa,
         blacklist_regions: hg19  # only hg19 and hg38, remove if not applicable
     },
-    target_path: /path/to/tabix/indexed/targets.bed.gz,
+    target: /path/to/tabix/indexed/targets.bed.gz,
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: /path/to/distinct_features.txt
     },

@@ -53,13 +53,13 @@ class RandomPositionsSampler(OnlineSampler):
     ----------
     reference_sequence : selene_sdk.sequences.Genome
         A reference sequence from which to create examples.
-    target_path : str
-        A `selene_sdk.targets.Target` object to provide the targets that 
-        we would like to predict, or a str to provide path to tabix-indexed, 
-        compressed BED file (`*.bed.gz`) of genomic
-        coordinates mapped to the genomic features we want to predict. 
-        Using str as target_path is deprecated and will be removed in the 
-        future. Please consider using a GenomicFeatures object instead.
+    target : str
+        A `selene_sdk.targets.Target` object to provide the targets that
+        we would like to predict, or a str to provide path to tabix-indexed,
+        compressed BED file (`*.bed.gz`) of genomic coordinates mapped to
+        the genomic features we want to predict. Using str as target will
+        be deprecated in the future. Please consider using a GenomicFeatures
+        object instead.
     features : list(str)
         List of distinct features that we aim to predict.
     seed : int, optional
@@ -82,9 +82,9 @@ class RandomPositionsSampler(OnlineSampler):
         length `center_bin_to_predict`.
     feature_thresholds : float [0.0, 1.0], optional
         Default is 0.5. The `feature_threshold` to pass to the
-        `GenomicFeatures` object. Use str target_path and feature_thresholds
+        `GenomicFeatures` object. Use str target and feature_thresholds
         is deprecated and will be removed in the future. Please consider 
-        passing GenomicFeatures object directly to target_path instead.
+        passing GenomicFeatures object directly to target instead.
     mode : {'train', 'validate', 'test'}
         Default is `'train'`. The mode to run the sampler in.
     save_datasets : list(str), optional
@@ -158,7 +158,7 @@ class RandomPositionsSampler(OnlineSampler):
     """
     def __init__(self,
                  reference_sequence,
-                 target_path,
+                 target,
                  features,
                  seed=436,
                  validation_holdout=['chr6', 'chr7'],
@@ -174,7 +174,7 @@ class RandomPositionsSampler(OnlineSampler):
                  output_dir=None):
         super(RandomPositionsSampler, self).__init__(
             reference_sequence,
-            target_path,
+            target,
             features,
             seed=seed,
             validation_holdout=validation_holdout,

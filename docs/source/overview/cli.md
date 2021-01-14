@@ -362,7 +362,7 @@ sampler: !obj:selene_sdk.samplers.RandomPositionsSampler {
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: /path/to/features_list.txt
     },
-    target_path: /path/to/targets_bed.gz,
+    target: /path/to/targets_bed.gz,
     seed: 123,
     validation_holdout: [chr6, chr7],
     test_holdout: [chr8, chr9],
@@ -377,13 +377,13 @@ sampler: !obj:selene_sdk.samplers.RandomPositionsSampler {
 ##### Required parameters
 - `reference_sequence`: Path to a reference sequence FASTA file we can query to create our data samples.
     - `blacklist_regions` is an optional argument for `selene_sdk.sequences.Genome` that allows you to specify the blacklist regions for the hg19 or hg38 reference sequence. The lists of blacklisted intervals are provided by [Anshul Kundaje for ENCODE](https://sites.google.com/site/anshulkundaje/projects/blacklists) and support for more organisms can be included upon request.
-- `target_path`: Path to a tabix-indexed, compressed BED file (`.bed.gz`) of genomic coordinates corresponding to the measurements for genomic features/classes the model should predict. 
+- `target`: Path to a tabix-indexed, compressed BED file (`.bed.gz`) of genomic coordinates corresponding to the measurements for genomic features/classes the model should predict. 
 - `features`: The list of distinct features the model predicts. (`input_path` to the function-type value that loads the file of features as a list.)
 
 ##### Optional parameters
 - `seed`: Default is 436. 
 - `validation_holdout`: Default is `[chr6, chr7]`. Holdout can be regional (i.e. chromosomal) or proportional.
-  * If regional, expects a list where the regions must match those specified in the first column of the tabix-indexed BED file `target_path` (which must also match the FASTA descriptions for every record in `reference_sequence`).
+  * If regional, expects a list where the regions must match those specified in the first column of the tabix-indexed BED file `target` (which must also match the FASTA descriptions for every record in `reference_sequence`).
   * If proportional, specify a percentage between (0.0, 1.0). Typically 0.10 or 0.20.
 - `test_holdout`: Default is `[chr8, chr9]`. Holdout can be regional (i.e. chromosomal) or proportional. See description of `validation_holdout`. 
 - `sequence_length`: Default is 1000. Model is trained on sequences of `sequence_length`. 
@@ -405,7 +405,7 @@ sampler: !obj:selene_sdk.samplers.IntervalsSampler {
         input_path: /path/to/reference_sequence.fa,
         blacklist_regions: hg38
     },
-    target_path: /path/to/targets.bed.gz,
+    target: /path/to/targets.bed.gz,
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: /path/to/features_list.txt
     },
@@ -534,7 +534,7 @@ sampler: !obj:selene_sdk.samplers.IntervalsSampler {
         input_path: /path/to/reference_sequence.fa,
         blacklist_regions: hg19
     },
-    target_path: /path/to/tabix/indexed/targets.bed.gz,
+    target: /path/to/tabix/indexed/targets.bed.gz,
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: /path/to/distinct_features.txt
     },

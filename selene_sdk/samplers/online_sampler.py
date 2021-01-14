@@ -25,13 +25,13 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
     ----------
     reference_sequence : selene_sdk.sequences.Sequence
         A reference sequence from which to create examples.
-    target_path : selene_sdk.targets.Target or str
-        A `selene_sdk.targets.Target` object to provide the targets that 
-        we would like to predict, or a str to provide path to tabix-indexed, 
-        compressed BED file (`*.bed.gz`) of genomic
-        coordinates mapped to the genomic features we want to predict. 
-        Using str as target_path is deprecated and will be removed in the 
-        future. Please consider using a GenomicFeatures object instead.
+    target : selene_sdk.targets.Target or str
+        A `selene_sdk.targets.Target` object to provide the targets that
+        we would like to predict, or a str to provide path to tabix-indexed,
+        compressed BED file (`*.bed.gz`) of genomic coordinates mapped to
+        the genomic features we want to predict. Using str as target will
+        be deprecated in the future. Please consider using a GenomicFeatures
+        object instead.
     features : list(str)
         List of distinct features that we aim to predict.
     seed : int, optional
@@ -54,9 +54,9 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
         length `center_bin_to_predict`.
     feature_thresholds : float [0.0, 1.0], optional
         Default is 0.5. The `feature_threshold` to pass to the
-        `GenomicFeatures` object. Use str target_path and feature_thresholds
+        `GenomicFeatures` object. Use str target and feature_thresholds
         is deprecated and will be removed in the future. Please consider 
-        passing GenomicFeatures object directly to target_path instead.
+        passing GenomicFeatures object directly to target instead.
     mode : {'train', 'validate', 'test'}, optional
         Default is `'train'`. The mode to run the sampler in.
     save_datasets : list(str), optional
@@ -73,7 +73,7 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
     ----------
     reference_sequence : selene_sdk.sequences.Sequence
         The reference sequence that examples are created from.
-    target_path : selene_sdk.targets.Target
+    target : selene_sdk.targets.Target
         The `selene_sdk.targets.Target` object holding the features that we
         would like to predict.
     validation_holdout : list(str) or float
@@ -122,7 +122,7 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
 
     def __init__(self,
                  reference_sequence,
-                 target_path,
+                 target,
                  features,
                  seed=436,
                  validation_holdout=['chr6', 'chr7'],
@@ -208,14 +208,14 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
 
         self.n_features = len(self._features)
 
-        if isinstance(target_path, str):
+        if isinstance(target, str):
             self.target = GenomicFeatures(
-                target_path, self._features,	
+                target, self._features,
                 feature_thresholds=feature_thresholds)
-        elif isinstance(target_path, Target):
-            self.target = target_path
+        elif isinstance(target, Target):
+            self.target = target
         else:
-            raise ValueError("target_path must be str or "
+            raise ValueError("target must be str or "
             "selene_sdk.targets.Target object")
         self._save_filehandles = {}
 

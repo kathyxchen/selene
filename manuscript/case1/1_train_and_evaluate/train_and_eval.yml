@@ -17,7 +17,7 @@ sampler: !obj:selene_sdk.samplers.IntervalsSampler {
     features: !obj:selene_sdk.utils.load_features_list {
         input_path: <ABSOLUTE_PATH>/selene/manuscript/case1/data/distinct_features.txt
     },
-    target_path: <ABSOLUTE_PATH>/selene/manuscript/case1/data/sorted_GATA1_proery_bm.bed.gz, 
+    target: <ABSOLUTE_PATH>/selene/manuscript/case1/data/sorted_GATA1_proery_bm.bed.gz,
     intervals_path: <ABSOLUTE_PATH>/selene/manuscript/case1/data/hg38_TF_intervals.txt,
     test_holdout: [chr8, chr9],
     validation_holdout: [chr6, chr7],
