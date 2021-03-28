@@ -5,6 +5,7 @@ torch DataLoader mechanism.
 """
 
 import  sys
+import collections
 
 import numpy as np
 import torch.utils.data as data
@@ -44,22 +45,33 @@ class _SamplerDataset(data.Dataset):
 
         Returns
         ----------
-        sequences, targets : tuple(numpy.ndarray, numpy.ndarray)
-            A tuple containing the numeric representation of the
-            sequence examples and their corresponding labels. The
-            shape of `sequences` will be
-            :math:`B \\times L \\times N`, where :math:`B` is
-            `batch_size`, :math:`L` is the sequence length, and
-            :math:`N` is the size of the sequence type's alphabet.
-            The shape of `targets` will be :math:`B \\times F`,
-            where :math:`F` is the number of features.
+        datatuple : tuple(numpy.ndarray, ...) or tuple(tuple(numpy.ndarray, ...), ...)
+            A tuple containing the sampler.sample() output which can be a tuple 
+            of arrays or a tuple of tuple of arrays (can be a mix of tuple and arrays). 
+            The output dimension depends on the input of ` __getitem__`: if the
+            index is an int the output is without the batch dimension. This fits
+            the convention of most __getitem__ implementations and works with 
+            DataLoader.
         """
-        sequences, targets = self.sampler.sample(batch_size=1 \
-            if isinstance(index, int) else len(index))
-        if sequences.shape[0] == 1:
-            sequences = sequences[0,:]
-            targets = targets[0,:]
-        return sequences, targets
+        if isinstance(index, int):
+            batch_size = 1
+            reduce_dim = True
+        else: 
+            batch_size = len(index)
+            reduce_dim = False
+
+        sampled_data = self.sampler.sample(batch_size=batch_size)
+
+        if reduce_dim :
+            _sampled_data  = []
+            for element in sampled_data:
+                if isinstance(element, collections.abc.Sequence):
+                    _sampled_data.append(tuple([d[0,:] for d in element]))
+                else:
+                    _sampled_data.append(element[0,:])
+            sampled_data = tuple(_sampled_data)
+        
+        return sampled_data
 
     def __len__(self):
         """
