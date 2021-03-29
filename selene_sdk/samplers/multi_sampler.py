@@ -9,6 +9,13 @@ from torch.utils.data import DataLoader
 from .sampler import Sampler
 
 def MultiFileSampler(*args, **kwargs):
+    """
+    MultiFileSampler is deprecated and will be removed from future
+    versions of Selene. Please use MultiSampler instead. This function
+    maintains backward compatibility for code that uses MultiFileSampler,
+    but we will remove this function in future. Please refer to the 
+    MultiSampler docs for information about usage.
+    """
     from warnings import warn
     warn("MultiFileSampler is deprecated and will be removed from future "
     "versions of Selene. Please use MultiSampler instead.")
