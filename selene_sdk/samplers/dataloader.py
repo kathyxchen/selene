@@ -4,6 +4,7 @@ which allow parallel sampling for any Sampler using
 torch DataLoader mechanism.
 """
 import  sys
+import collections
 
 import h5py
 import numpy as np
@@ -28,9 +29,10 @@ class _SamplerDataset(Dataset):
     sampler : selene_sdk.samplers.Sampler
         The sampler from which to draw data.
     """
-    def __init__(self, sampler):
+    def __init__(self, sampler, save_dataset=False):
         super(_SamplerDataset, self).__init__()
         self.sampler = sampler
+        self.save_dataset = save_dataset
 
     def __getitem__(self, index):
         """
@@ -45,22 +47,35 @@ class _SamplerDataset(Dataset):
 
         Returns
         ----------
-        sequences, targets : tuple(numpy.ndarray, numpy.ndarray)
-            A tuple containing the numeric representation of the
-            sequence examples and their corresponding labels. The
-            shape of `sequences` will be
-            :math:`I \\times L \\times N`, where :math:`I` is
-            `index`, :math:`L` is the sequence length, and
-            :math:`N` is the size of the sequence type's alphabet.
-            The shape of `targets` will be :math:`I \\times T`,
-            where :math:`T` is the number of targets predicted.
+        datatuple : tuple(numpy.ndarray, ...) or tuple(tuple(numpy.ndarray, ...), ...)
+            A tuple containing the sampler.sample() output which can be a tuple 
+            of arrays or a tuple of tuple of arrays (can be a mix of tuple and arrays). 
+            The output dimension depends on the input of ` __getitem__`: if the
+            index is an int the output is without the batch dimension. This fits
+            the convention of most __getitem__ implementations and works with 
+            DataLoader.
         """
-        sequences, targets = self.sampler.sample(
-            batch_size=1 if isinstance(index, int) else len(index))
-        if sequences.shape[0] == 1:
-            sequences = sequences[0,:]
-            targets = targets[0,:]
-        return sequences, targets
+        if isinstance(index, int):
+            batch_size = 1
+            reduce_dim = True
+        else: 
+            batch_size = len(index)
+            reduce_dim = False
+
+        sampled_data = self.sampler.sample(batch_size=batch_size,
+            return_saved_dataset=self.save_dataset)
+
+        print(sampled_data)
+        if reduce_dim :
+            _sampled_data  = []
+            for element in sampled_data:
+                if isinstance(element, collections.abc.Sequence):
+                    _sampled_data.append(tuple([d[0] for d in element]))
+                else:
+                    _sampled_data.append(element[0,:])
+            sampled_data = tuple(_sampled_data)
+        
+        return sampled_data
 
     def __len__(self):
         """
@@ -106,6 +121,7 @@ class SamplerDataLoader(DataLoader):
                  sampler,
                  num_workers=1,
                  batch_size=1,
+                 save_dataset=True,
                  seed=436):
         def worker_init_fn(worker_id):
             """
@@ -121,7 +137,8 @@ class SamplerDataLoader(DataLoader):
             "worker_init_fn": worker_init_fn
         }
 
-        super(SamplerDataLoader, self).__init__(_SamplerDataset(sampler), **args)
+        super(SamplerDataLoader, self).__init__(
+            _SamplerDataset(sampler, save_dataset=save_dataset), **args)
         self.seed = seed
 
 

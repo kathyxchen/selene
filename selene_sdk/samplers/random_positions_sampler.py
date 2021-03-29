@@ -236,7 +236,7 @@ class RandomPositionsSampler(OnlineSampler):
                 self._sample_from_mode[mode]._replace(
                     indices=indices, weights=weights)
 
-    def _retrieve(self, chrom, position):
+    def _retrieve(self, chrom, position, return_saved_dataset=False):
         bin_start = position - self._start_radius
         bin_end = position + self._end_radius
         retrieved_targets = self.target.get_feature_data(
@@ -275,7 +275,16 @@ class RandomPositionsSampler(OnlineSampler):
                  feature_indices])
             if len(self._save_datasets[self.mode]) > 200000:
                 self.save_dataset_to_file(self.mode)
-        return (retrieved_seq, retrieved_targets)
+        if return_saved_dataset:
+            return (retrieved_seq, retrieved_targets), \
+                        [chrom,
+                         window_start,
+                         window_end,
+                         strand,
+                         feature_indices]
+        else:
+            return (retrieved_seq, retrieved_targets)
+            
 
     def _update_randcache(self, mode=None):
         if not mode:
@@ -288,7 +297,7 @@ class RandomPositionsSampler(OnlineSampler):
         self._randcache[mode]["sample_next"] = 0
 
     @init
-    def sample(self, batch_size=1, mode=None):
+    def sample(self, batch_size=1, mode=None, return_saved_dataset=False):
         """
         Randomly draws a mini-batch of examples and their corresponding
         labels.
@@ -318,6 +327,8 @@ class RandomPositionsSampler(OnlineSampler):
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
         targets = np.zeros((batch_size, self.n_features))
+        if return_saved_dataset:
+            saved_dataset = []
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -333,11 +344,16 @@ class RandomPositionsSampler(OnlineSampler):
                 self.sample_from_intervals[rand_interval_index]
             position = np.random.randint(cstart, cend)
 
-            retrieve_output = self._retrieve(chrom, position)
+            if return_saved_dataset: 
+                retrieve_output, saved_data = self._retrieve(chrom, position, return_saved_dataset)
+                saved_dataset.append(saved_data)
+            else:
+                retrieve_output = self._retrieve(chrom, position)
             if not retrieve_output:
                 continue
             seq, seq_targets = retrieve_output
             sequences[n_samples_drawn, :, :] = seq
             targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
-        return (sequences, targets)
+        
+        return (sequences, targets, saved_dataset)
