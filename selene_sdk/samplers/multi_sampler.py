@@ -339,7 +339,7 @@ class MultiSampler(Sampler):
             file and `save_dataset_to_file` will not be called with
             `mode` again.
         """
-        if mode not in self._save_datasets:
+        if mode not in self._save_datasets or len(self._save_datasets[mode]==0):
             return
         samples = self._save_datasets[mode]
         if mode not in self._save_filehandles:
