@@ -275,7 +275,10 @@ class RandomPositionsSampler(OnlineSampler):
                  feature_indices])
             if len(self._save_datasets[self.mode]) > 200000:
                 self.save_dataset_to_file(self.mode)
+                
         if return_saved_dataset:
+            feature_indices = ';'.join(
+                        [str(f) for f in np.nonzero(retrieved_targets)[0]])
             return (retrieved_seq, retrieved_targets), \
                         [chrom,
                          window_start,
@@ -344,16 +347,17 @@ class RandomPositionsSampler(OnlineSampler):
                 self.sample_from_intervals[rand_interval_index]
             position = np.random.randint(cstart, cend)
 
-            if return_saved_dataset: 
-                retrieve_output, saved_data = self._retrieve(chrom, position, return_saved_dataset)
-                saved_dataset.append(saved_data)
-            else:
-                retrieve_output = self._retrieve(chrom, position)
+            retrieve_output = self._retrieve(chrom, position, return_saved_dataset=return_saved_dataset)
             if not retrieve_output:
                 continue
+            if return_saved_dataset:
+                retrieve_output, saved_data = retrieve_output
+                saved_dataset.append(saved_data)
             seq, seq_targets = retrieve_output
             sequences[n_samples_drawn, :, :] = seq
             targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
-        
-        return (sequences, targets, saved_dataset)
+        if return_saved_dataset:
+            return (sequences, targets, saved_dataset)
+        else:
+            return (sequences, targets)

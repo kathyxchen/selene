@@ -65,14 +65,13 @@ class _SamplerDataset(Dataset):
         sampled_data = self.sampler.sample(batch_size=batch_size,
             return_saved_dataset=self.save_dataset)
 
-        print(sampled_data)
         if reduce_dim :
             _sampled_data  = []
             for element in sampled_data:
-                if isinstance(element, collections.abc.Sequence):
+                if isinstance(element, tuple):
                     _sampled_data.append(tuple([d[0] for d in element]))
                 else:
-                    _sampled_data.append(element[0,:])
+                    _sampled_data.append(element[0])
             sampled_data = tuple(_sampled_data)
         
         return sampled_data
@@ -139,6 +138,7 @@ class SamplerDataLoader(DataLoader):
 
         super(SamplerDataLoader, self).__init__(
             _SamplerDataset(sampler, save_dataset=save_dataset), **args)
+        self.save_dataset = save_dataset
         self.seed = seed
 
 

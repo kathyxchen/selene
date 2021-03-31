@@ -3,6 +3,7 @@ This module provides the `MultiSampler` class, which uses a
 FileSampler for each mode of sampling (train, test, validation).
 The MultiSampler is therefore a subclass of Sampler.
 """
+import os
 import numpy as np
 from torch.utils.data import DataLoader
 
@@ -117,7 +118,8 @@ class MultiSampler(Sampler):
                 test_sampler if isinstance(test_sampler, DataLoader) else None
 
         self.mode = mode
-
+        self._save_filehandles = {}
+        
     def set_mode(self, mode):
         """
         Sets the sampling mode.
@@ -203,17 +205,26 @@ class MultiSampler(Sampler):
             If None, will use the current mode `self.mode`.
         """
         mode = mode if mode else self.mode
+        
         if self._samplers[mode]:
             return self._samplers[mode].sample(batch_size)
         else:
             self._set_batch_size(batch_size, mode=mode)
             try:
-                data, targets = next(self._iterators[mode])
+                if self._dataloaders[mode].save_dataset:
+                    data, targets, saved_dataset = next(self._iterators[mode])
+                    self._save_datasets[self.mode].append(saved_dataset)
+                else:
+                    data, targets = next(self._iterators[mode])
                 return data.numpy(), targets.numpy()
             except StopIteration:
                 #If DataLoader iterator reaches its length, reinitialize
                 self._iterators[mode] = iter(self._dataloaders[mode])
-                data, targets = next(self._iterators[mode])
+                if self._dataloaders[mode].save_dataset:
+                    data, targets, saved_dataset = next(self._iterators[mode])
+                    self._save_datasets[self.mode].append(saved_dataset)
+                else:
+                    data, targets = next(self._iterators[mode])
                 return data.numpy(), targets.numpy()
 
     def get_data_and_targets(self, batch_size, n_samples, mode=None):
@@ -328,4 +339,19 @@ class MultiSampler(Sampler):
             file and `save_dataset_to_file` will not be called with
             `mode` again.
         """
-        return None
+        if mode not in self._save_datasets:
+            return
+        samples = self._save_datasets[mode]
+        if mode not in self._save_filehandles:
+            self._save_filehandles[mode] = open(
+                os.path.join(self._output_dir,
+                             "{0}_data.bed".format(mode)),
+                'w+')
+        file_handle = self._save_filehandles[mode]
+        while len(samples) > 0:
+            batch = samples.pop(0)
+            for cols in zip(*batch):
+                line = '\t'.join([c if isinstance(c, str) else str(c.item()) for c in cols])
+                file_handle.write("{0}\n".format(line))
+        if close_filehandle:
+            file_handle.close()
