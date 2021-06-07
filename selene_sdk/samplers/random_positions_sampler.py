@@ -53,9 +53,10 @@ class RandomPositionsSampler(OnlineSampler):
     ----------
     reference_sequence : selene_sdk.sequences.Genome
         A reference sequence from which to create examples.
-    target : str
+    target : sselene_sdk.targets.Target or list(selene_sdk.targets.Target) or str
         A `selene_sdk.targets.Target` object to provide the targets that
-        we would like to predict, or a str to provide path to tabix-indexed,
+        we would like to predict, or a list of these objects,
+        or a str to provide path to tabix-indexed,
         compressed BED file (`*.bed.gz`) of genomic coordinates mapped to
         the genomic features we want to predict. Using str as target will
         be deprecated in the future. Please consider using a GenomicFeatures
@@ -282,8 +283,12 @@ class RandomPositionsSampler(OnlineSampler):
     def _retrieve(self, chrom, position):
         bin_start = position - self._start_radius
         bin_end = position + self._end_radius
-        retrieved_targets = self.target.get_feature_data(
-            chrom, bin_start, bin_end)
+        if isinstance(self.target, list):
+            retrieved_targets = [t.get_feature_data(
+                    chrom, bin_start, bin_end) for t in self.target]
+        else:
+            retrieved_targets = self.target.get_feature_data(
+                chrom, bin_start, bin_end)
         window_start = bin_start - self.surrounding_sequence_radius
         window_end = bin_end + self.surrounding_sequence_radius
         if window_end - window_start < self.sequence_length:
@@ -316,7 +321,7 @@ class RandomPositionsSampler(OnlineSampler):
             return None
 
 
-        if self.mode in self._save_datasets:
+        if self.mode in self._save_datasets and not isinstance(retrieved_targets, list):
             feature_indices = ';'.join(
                 [str(f) for f in np.nonzero(retrieved_targets)[0]])
             self._save_datasets[self.mode].append(
@@ -369,7 +374,10 @@ class RandomPositionsSampler(OnlineSampler):
         """
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
-        targets = np.zeros((batch_size, *self.target.shape))
+        if isinstance(self.target, list):
+            targets = [np.zeros((batch_size, *t.shape)) for t in self.target]
+        else:
+            targets = np.zeros((batch_size, *self.target.shape))
         if return_coordinates:
             coords = []
         n_samples_drawn = 0
@@ -397,7 +405,11 @@ class RandomPositionsSampler(OnlineSampler):
             
             seq, seq_targets = retrieve_output
             sequences[n_samples_drawn, :, :] = seq
-            targets[n_samples_drawn, :] = seq_targets
+            if isinstance(targets, list):
+                for target, seq_target in zip(targets, seq_targets):
+                    target[n_samples_drawn, :] = seq_target
+            else:
+                targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
             
         if return_coordinates:

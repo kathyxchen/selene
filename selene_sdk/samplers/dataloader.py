@@ -98,6 +98,8 @@ class SamplerDataLoader(DataLoader):
         Default to 1. Number of workers to use for DataLoader.
     batch_size : int, optional
         Default to 1. The number of samples the iterator returns in one step.
+    prefetch_factor : int, optional
+        Default to 2. The number of prefetched samples per worker.
     seed : int, optional
         Default to 436. The seed for random number generators.
 
@@ -115,6 +117,7 @@ class SamplerDataLoader(DataLoader):
                  sampler,
                  num_workers=1,
                  batch_size=1,
+                 prefetch_factor=2,
                  seed=436):              
         def worker_init_fn(worker_id):
             """
@@ -127,7 +130,8 @@ class SamplerDataLoader(DataLoader):
             "batch_size": batch_size,
             "num_workers": num_workers,
             "pin_memory": True,
-            "worker_init_fn": worker_init_fn
+            "worker_init_fn": worker_init_fn,
+            "prefetch_factor": prefetch_factor
             }
             
         super(SamplerDataLoader, self).__init__(_SamplerDataset(sampler),**args)

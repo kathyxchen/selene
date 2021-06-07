@@ -212,7 +212,7 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
             self.target = GenomicFeatures(
                 target, self._features,
                 feature_thresholds=feature_thresholds)
-        elif isinstance(target, Target):
+        elif isinstance(target, Target) or isinstance(target, list):
             self.target = target
         else:
             raise ValueError("target must be str or "
