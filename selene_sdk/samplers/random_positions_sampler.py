@@ -374,8 +374,11 @@ class RandomPositionsSampler(OnlineSampler):
         """
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
+        
         if isinstance(self.target, list):
             targets = [np.zeros((batch_size, *t.shape)) for t in self.target]
+        elif isinstance(self.target.shape, list):
+            targets = [np.zeros((batch_size, *tshape)) for tshape in self.target.shape]
         else:
             targets = np.zeros((batch_size, *self.target.shape))
         if return_coordinates:

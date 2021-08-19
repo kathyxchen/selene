@@ -215,8 +215,8 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
         elif isinstance(target, Target) or isinstance(target, list):
             self.target = target
         else:
-            raise ValueError("target must be str or "
-            "selene_sdk.targets.Target object")
+            raise ValueError("target must be one of str, "
+            "selene_sdk.targets.Target object, or list")
         self._save_filehandles = {}
 
     def get_feature_from_index(self, index):
