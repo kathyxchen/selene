@@ -100,6 +100,8 @@ class SamplerDataLoader(DataLoader):
         Default to 1. The number of samples the iterator returns in one step.
     prefetch_factor : int, optional
         Default to 2. The number of prefetched samples per worker.
+    collate_fn : function, optional
+        Default to None. Provide custom collate function for DataLoader.
     seed : int, optional
         Default to 436. The seed for random number generators.
 
@@ -118,6 +120,7 @@ class SamplerDataLoader(DataLoader):
                  num_workers=1,
                  batch_size=1,
                  prefetch_factor=2,
+                 collate_fn=None,
                  seed=436):              
         def worker_init_fn(worker_id):
             """
@@ -131,7 +134,8 @@ class SamplerDataLoader(DataLoader):
             "num_workers": num_workers,
             "pin_memory": True,
             "worker_init_fn": worker_init_fn,
-            "prefetch_factor": prefetch_factor
+            "prefetch_factor": prefetch_factor,
+            "collate_fn": collate_fn
             }
             
         super(SamplerDataLoader, self).__init__(_SamplerDataset(sampler),**args)
