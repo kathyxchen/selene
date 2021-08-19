@@ -345,7 +345,7 @@ class RandomPositionsSampler(OnlineSampler):
         self._randcache[mode]["sample_next"] = 0
 
     @init
-    def sample(self, batch_size=1, mode=None, return_coordinates=False):
+    def sample(self, batch_size=1, mode=None, return_coordinates=False, coordinates_only=False):
         """
         Randomly draws a mini-batch of examples and their corresponding
         labels.
@@ -373,16 +373,20 @@ class RandomPositionsSampler(OnlineSampler):
 
         """
         mode = mode if mode else self.mode
-        sequences = np.zeros((batch_size, self.sequence_length, 4))
-        
-        if isinstance(self.target, list):
-            targets = [np.zeros((batch_size, *t.shape)) for t in self.target]
-        elif isinstance(self.target.shape, list):
-            targets = [np.zeros((batch_size, *tshape)) for tshape in self.target.shape]
+        if coordinates_only:
+            assert return_coordinates == True
         else:
-            targets = np.zeros((batch_size, *self.target.shape))
+            sequences = np.zeros((batch_size, self.sequence_length, 4))
+            
+            if isinstance(self.target, list):
+                targets = [np.zeros((batch_size, *t.shape)) for t in self.target]
+            elif isinstance(self.target.shape, list):
+                targets = [np.zeros((batch_size, *tshape)) for tshape in self.target.shape]
+            else:
+                targets = np.zeros((batch_size, *self.target.shape))
         if return_coordinates:
             coords = []
+
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -398,24 +402,29 @@ class RandomPositionsSampler(OnlineSampler):
                 self.sample_from_intervals[rand_interval_index]
             position = np.random.randint(cstart, cend)
             position -= position % self.position_resolution
-
-            retrieve_output = self._retrieve(chrom, position)
-            if not retrieve_output:
-                continue
+            
+            if not coordinates_only:
+                retrieve_output = self._retrieve(chrom, position)
+                if not retrieve_output:
+                    continue
 
             if return_coordinates:
                 coords.append((chrom, position))
-            
-            seq, seq_targets = retrieve_output
-            sequences[n_samples_drawn, :, :] = seq
-            if isinstance(targets, list):
-                for target, seq_target in zip(targets, seq_targets):
-                    target[n_samples_drawn, :] = seq_target
-            else:
-                targets[n_samples_drawn, :] = seq_targets
+
+            if not coordinates_only:
+                seq, seq_targets = retrieve_output
+                sequences[n_samples_drawn, :, :] = seq
+                if isinstance(targets, list):
+                    for target, seq_target in zip(targets, seq_targets):
+                        target[n_samples_drawn, :] = seq_target
+                else:
+                    targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
             
         if return_coordinates:
-            return sequences, targets, coords
+            if coordinates_only:
+                return coords
+            else:
+                return sequences, targets, coords
         else:
             return sequences, targets
