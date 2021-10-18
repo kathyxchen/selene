@@ -15,6 +15,7 @@ import torch.nn as nn
 from ._common import _pad_sequence
 from ._common import _truncate_sequence
 from ._common import get_reverse_complement
+from ._common import get_reverse_complement_encoding
 from ._common import predict
 from ._in_silico_mutagenesis import _ism_sample_id
 from ._in_silico_mutagenesis import in_silico_mutagenesis_sequences
@@ -164,17 +165,22 @@ class AnalyzeSequences(object):
 
         self.sequence_length = sequence_length
 
-        self._start_radius = int(sequence_length / 2)
+        self._start_radius = sequence_length // 2
         self._end_radius = self._start_radius
         if sequence_length % 2 != 0:
-            self._end_radius += 1
+            self._start_radius += 1
 
         self.batch_size = batch_size
         self.features = features
         self.reference_sequence = reference_sequence
         if type(self.reference_sequence) == Genome and \
+                not self.reference_sequence._initialized:
+            self.reference_sequence._unpicklable_init()
+        if type(self.reference_sequence) == Genome and \
                 _is_lua_trained_model(model):
             Genome.update_bases_order(['A', 'G', 'C', 'T'])
+        else:  # even if not using Genome, I guess we can update?
+            Genome.update_bases_order(['A', 'C', 'G', 'T'])
         self._write_mem_limit = write_mem_limit
 
     def _initialize_reporters(self,
@@ -297,6 +303,11 @@ class AnalyzeSequences(object):
         sequences = []
         labels = []
         na_rows = []
+        check_chr = True
+        for chrom in reference_sequence.get_chrs():
+            if not chrom.startswith("chr"):
+                check_chr = False
+                break
         with open(input_path, 'r') as read_handle:
             for i, line in enumerate(read_handle):
                 cols = line.strip().split('\t')
@@ -309,8 +320,8 @@ class AnalyzeSequences(object):
                 strand = '.'
                 if isinstance(strand_index, int) and len(cols) > strand_index:
                     strand = cols[strand_index]
-                if 'chr' not in chrom:
-                    chrom = 'chr{0}'.format(chrom)
+                if 'chr' not in chrom and check_chr is True:
+                    chrom = "chr{0}".format(chrom)
                 if not str.isdigit(start) or not str.isdigit(end) \
                         or chrom not in self.reference_sequence.genome:
                     na_rows.append(line)
@@ -379,6 +390,7 @@ class AnalyzeSequences(object):
             information (strand must be one of {'+', '-', '.'}). Specify
             the index (0-based) to use it. Otherwise, by default '+' is used.
 
+
         Returns
         -------
         None
@@ -406,30 +418,28 @@ class AnalyzeSequences(object):
         batch_ids = []
         for i, (label, coords) in enumerate(zip(labels, seq_coords)):
             encoding, contains_unk = self.reference_sequence.get_encoding_from_coords_check_unk(
-                    *coords,
-                    pad=True)
+                    *coords, pad=True)
             if sequences is None:
                 sequences = np.zeros((self.batch_size, *encoding.shape))
             if i and i % self.batch_size == 0:
                 preds = predict(self.model, sequences, use_cuda=self.use_cuda)
-                sequences = np.zeros((self.batch_size, *encoding.shape))
                 reporter.handle_batch_predictions(preds, batch_ids)
+                sequences = np.zeros((self.batch_size, *encoding.shape))
                 batch_ids = []
+            sequences[i % self.batch_size, :, :] = encoding
             batch_ids.append(label+(contains_unk,))
-            sequences[ i % self.batch_size, :, :] = encoding
             if contains_unk:
-                warnings.warn("For region {0}, "
-                                "reference sequence contains unknown base(s). "
-                                "--will be marked `True` in the `contains_unk` column "
-                                "of the .tsv or the row_labels .txt file.".format(
-                                  label))
+                warnings.warn(("For region {0}, "
+                               "reference sequence contains unknown "
+                               "base(s). --will be marked `True` in the "
+                               "`contains_unk` column of the .tsv or "
+                               "row_labels .txt file.").format(label))
 
-        if (batch_ids and i == 0) or i % self.batch_size != 0:
-            sequences = sequences[:i % self.batch_size + 1, :, :]
-            preds = predict(self.model, sequences, use_cuda=self.use_cuda)
-            reporter.handle_batch_predictions(preds, batch_ids)
-
+        sequences = sequences[:i % self.batch_size + 1, :, :]
+        preds = predict(self.model, sequences, use_cuda=self.use_cuda)
+        reporter.handle_batch_predictions(preds, batch_ids)
         reporter.write_to_file()
+
 
     def get_predictions_for_fasta_file(self,
                                        input_path,
@@ -483,7 +493,7 @@ class AnalyzeSequences(object):
             ["predictions"],
             os.path.join(output_dir, output_prefix),
             output_format,
-            ["index", "name", "contains_unk"],
+            ["index", "name"],
             output_size=len(fasta_file.keys()),
             mode="prediction")[0]
         sequences = np.zeros((self.batch_size,
@@ -491,16 +501,7 @@ class AnalyzeSequences(object):
                               len(self.reference_sequence.BASES_ARR)))
         batch_ids = []
         for i, fasta_record in enumerate(fasta_file):
-            cur_sequence = str(fasta_record)
-
-            if len(cur_sequence) < self.sequence_length:
-                cur_sequence = _pad_sequence(cur_sequence,
-                                             self.sequence_length,
-                                             self.reference_sequence.UNK_BASE)
-            elif len(cur_sequence) > self.sequence_length:
-                cur_sequence = _truncate_sequence(cur_sequence, self.sequence_length)
-
-            contains_unk = self.reference_sequence.UNK_BASE in cur_sequence
+            cur_sequence = self._pad_or_truncate_sequence(str(fasta_record))
             cur_sequence_encoding = self.reference_sequence.sequence_to_encoding(
                 cur_sequence)
 
@@ -511,18 +512,12 @@ class AnalyzeSequences(object):
                 reporter.handle_batch_predictions(preds, batch_ids)
                 batch_ids = []
 
-            batch_ids.append([i, fasta_record.name, contains_unk])
+            batch_ids.append([i, fasta_record.name])
             sequences[i % self.batch_size, :, :] = cur_sequence_encoding
-            if contains_unk:
-                warnings.warn("Sequence ({0},{1}) "
-                              " contains unknown base(s). "
-                              "--will be marked `True` in the `contains_unk` column "
-                              "of the .tsv or the row_labels .txt file.".format(
-                                  i, fasta_record.name ))
-        if (batch_ids and i == 0) or i % self.batch_size != 0:
-            sequences = sequences[:i % self.batch_size + 1, :, :]
-            preds = predict(self.model, sequences, use_cuda=self.use_cuda)
-            reporter.handle_batch_predictions(preds, batch_ids)
+
+        sequences = sequences[:i % self.batch_size + 1, :, :]
+        preds = predict(self.model, sequences, use_cuda=self.use_cuda)
+        reporter.handle_batch_predictions(preds, batch_ids)
 
         fasta_file.close()
         reporter.write_to_file()
@@ -530,18 +525,21 @@ class AnalyzeSequences(object):
 
     def get_predictions(self,
                         input_path,
-                        output_dir,
+                        output_dir=None,
                         output_format="tsv",
                         strand_index=None):
         """
-        Get model predictions for sequences specified in a FASTA or BED file.
+        Get model predictions for sequences specified as a raw sequence,
+        FASTA, or BED file.
 
         Parameters
         ----------
         input_path : str
-            Input path to the FASTA or BED file.
-        output_dir : str
-            Output directory to write the model predictions.
+            A single sequence, or a path to the FASTA or BED file input.
+        output_dir : str, optional
+            Default is None. Output directory to write the model predictions.
+            If this is left blank a raw sequence input will be assumed, though
+            an output directory is required for FASTA and BED inputs.
         output_format : {'tsv', 'hdf5'}, optional
             Default is 'tsv'. Choose whether to save TSV or HDF5 output files.
             TSV is easier to access (i.e. open with text editor/Excel) and
@@ -581,7 +579,12 @@ class AnalyzeSequences(object):
             or .tsv file will mark this sequence or region as `contains_unk = True`.
 
         """
-        if input_path.endswith('.fa') or input_path.endswith('.fasta'):
+        if output_dir is None:
+            sequence = self._pad_or_truncate_sequence(input_path)
+            seq_enc = self.reference_sequence.sequence_to_encoding(sequence)
+            seq_enc = np.expand_dims(seq_enc, axis=0)  # add batch size of 1
+            return predict(self.model, seq_enc, use_cuda=self.use_cuda)
+        elif input_path.endswith('.fa') or input_path.endswith('.fasta'):
             self.get_predictions_for_fasta_file(
                 input_path, output_dir, output_format=output_format)
         else:
@@ -590,6 +593,8 @@ class AnalyzeSequences(object):
                 output_dir,
                 output_format=output_format,
                 strand_index=strand_index)
+
+        return None
 
     def in_silico_mutagenesis_predict(self,
                                       sequence,
@@ -659,7 +664,9 @@ class AnalyzeSequences(object):
                               save_data,
                               output_path_prefix="ism",
                               mutate_n_bases=1,
-                              output_format="tsv"):
+                              output_format="tsv",
+                              start_position=0,
+                              end_position=None):
         """
         Applies *in silico* mutagenesis to a sequence.
 
@@ -679,6 +686,13 @@ class AnalyzeSequences(object):
             optimized operations for double and triple mutations.
         output_format : {'tsv', 'hdf5'}, optional
             Default is 'tsv'. The desired output format.
+        start_position : int, optional
+            Default is 0. The starting position of the subsequence to be
+            mutated.
+        end_position : int or None, optional
+            Default is None. The ending position of the subsequence to be
+            mutated. If left as `None`, then `self.sequence_length` will be
+            used.
 
         Returns
         -------
@@ -688,7 +702,46 @@ class AnalyzeSequences(object):
             file named `*_ref_predictions.h5` will be outputted with the
             model prediction for the original input sequence.
 
+        Raises
+        ------
+        ValueError
+            If the value of `start_position` or `end_position` is negative.
+        ValueError
+            If there are fewer than `mutate_n_bases` between `start_position`
+            and `end_position`.
+        ValueError
+            If `start_position` is greater or equal to `end_position`.
+        ValueError
+            If `start_position` is not less than `self.sequence_length`.
+        ValueError
+            If `end_position` is greater than `self.sequence_length`.
+
         """
+        if end_position is None:
+            end_position = self.sequence_length
+        if start_position >= end_position:
+            raise ValueError(("Starting positions must be less than the ending "
+                              "positions. Found a starting position of {0} with "
+                              "an ending position of {1}.").format(start_position,
+                                                                   end_position))
+        if start_position < 0:
+            raise ValueError("Negative starting positions are not supported.")
+        if end_position < 0:
+            raise ValueError("Negative ending positions are not supported.")
+        if start_position >= self.sequence_length:
+            raise ValueError(("Starting positions must be less than the sequence length."
+                              " Found a starting position of {0} with a sequence length "
+                              "of {1}.").format(start_position, self.sequence_length))
+        if end_position > self.sequence_length:
+            raise ValueError(("Ending positions must be less than or equal to the sequence "
+                              "length. Found an ending position of {0} with a sequence "
+                              "length of {1}.").format(end_position, self.sequence_length))
+        if (end_position - start_position) < mutate_n_bases:
+            raise ValueError(("Fewer bases exist in the substring specified by the starting "
+                              "and ending positions than need to be mutated. There are only "
+                              "{0} currently, but {1} bases must be mutated at a "
+                              "time").format(end_position - start_position, mutate_n_bases))
+
         path_dirs, _ = os.path.split(output_path_prefix)
         if path_dirs:
             os.makedirs(path_dirs, exist_ok=True)
@@ -709,7 +762,9 @@ class AnalyzeSequences(object):
         sequence = str.upper(sequence)
         mutated_sequences = in_silico_mutagenesis_sequences(
             sequence, mutate_n_bases=1,
-            reference_sequence=self.reference_sequence)
+            reference_sequence=self.reference_sequence,
+            start_position=start_position,
+            end_position=end_position)
         reporters = self._initialize_reporters(
             save_data,
             output_path_prefix,
@@ -749,7 +804,9 @@ class AnalyzeSequences(object):
                                         output_dir,
                                         mutate_n_bases=1,
                                         use_sequence_name=True,
-                                        output_format="tsv"):
+                                        output_format="tsv",
+                                        start_position=0,
+                                        end_position=None):
         """
         Apply *in silico* mutagenesis to all sequences in a FASTA file.
 
@@ -781,6 +838,16 @@ class AnalyzeSequences(object):
             the FASTA file will have its own set of output files, where
             the number of output files depends on the number of `save_data`
             predictions/scores specified.
+        start_position : int, optional
+            Default is 0. The starting position of the subsequence to be
+            mutated.
+        end_position : int or None, optional
+            Default is None. The ending position of the subsequence to be
+            mutated. If left as `None`, then `self.sequence_length` will be
+            used.
+
+
+
 
         Returns
         -------
@@ -790,25 +857,59 @@ class AnalyzeSequences(object):
             file named `*_ref_predictions.h5` will be outputted with the
             model prediction for the original input sequence.
 
+        Raises
+        ------
+        ValueError
+            If the value of `start_position` or `end_position` is negative.
+        ValueError
+            If there are fewer than `mutate_n_bases` between `start_position`
+            and `end_position`.
+        ValueError
+            If `start_position` is greater or equal to `end_position`.
+        ValueError
+            If `start_position` is not less than `self.sequence_length`.
+        ValueError
+            If `end_position` is greater than `self.sequence_length`.
+
         """
+        if end_position is None:
+            end_position = self.sequence_length
+        if start_position >= end_position:
+            raise ValueError(("Starting positions must be less than the ending "
+                              "positions. Found a starting position of {0} with "
+                              "an ending position of {1}.").format(start_position,
+                                                                   end_position))
+        if start_position < 0:
+            raise ValueError("Negative starting positions are not supported.")
+        if end_position < 0:
+            raise ValueError("Negative ending positions are not supported.")
+        if start_position >= self.sequence_length:
+            raise ValueError(("Starting positions must be less than the sequence length."
+                              " Found a starting position of {0} with a sequence length "
+                              "of {1}.").format(start_position, self.sequence_length))
+        if end_position > self.sequence_length:
+            raise ValueError(("Ending positions must be less than or equal to the sequence "
+                              "length. Found an ending position of {0} with a sequence "
+                              "length of {1}.").format(end_position, self.sequence_length))
+        if (end_position - start_position) < mutate_n_bases:
+            raise ValueError(("Fewer bases exist in the substring specified by the starting "
+                              "and ending positions than need to be mutated. There are only "
+                              "{0} currently, but {1} bases must be mutated at a "
+                              "time").format(end_position - start_position, mutate_n_bases))
+
         os.makedirs(output_dir, exist_ok=True)
 
         fasta_file = pyfaidx.Fasta(input_path)
         for i, fasta_record in enumerate(fasta_file):
-            cur_sequence = str.upper(str(fasta_record))
-            if len(cur_sequence) < self.sequence_length:
-                cur_sequence = _pad_sequence(cur_sequence,
-                                             self.sequence_length,
-                                             self.reference_sequence.UNK_BASE)
-            elif len(cur_sequence) > self.sequence_length:
-                cur_sequence = _truncate_sequence(
-                    cur_sequence, self.sequence_length)
+            cur_sequence = self._pad_or_truncate_sequence(str.upper(str(fasta_record)))
 
             # Generate mut sequences and base preds.
             mutated_sequences = in_silico_mutagenesis_sequences(
                 cur_sequence,
                 mutate_n_bases=mutate_n_bases,
-                reference_sequence=self.reference_sequence)
+                reference_sequence=self.reference_sequence,
+                start_position=start_position,
+                end_position=end_position)
             cur_sequence_encoding = self.reference_sequence.sequence_to_encoding(
                 cur_sequence)
             base_encoding = cur_sequence_encoding.reshape(
@@ -956,41 +1057,31 @@ class AnalyzeSequences(object):
             center = pos + len(ref) // 2
             start = center - self._start_radius
             end = center + self._end_radius
-            seq_encoding, contains_unk = self.reference_sequence.get_encoding_from_coords_check_unk(
-                        chrom,
-                        start,
-                        end,
-                        strand=strand)
-            if len(ref) and strand == '-':
-                ref = get_reverse_complement(
-                    ref,
-                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
-                alt = get_reverse_complement(
-                    alt,
-                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
+            ref_sequence_encoding, contains_unk = \
+                self.reference_sequence.get_encoding_from_coords_check_unk(
+                    chrom, start, end)
 
             ref_encoding = self.reference_sequence.sequence_to_encoding(ref)
-            alt_encoding = _process_alt(
-                chrom, pos, ref, alt, start, end, strand,
-                seq_encoding, self.reference_sequence)
+            alt_sequence_encoding = _process_alt(
+                chrom, pos, ref, alt, start, end,
+                ref_sequence_encoding,
+                self.reference_sequence)
 
             match = True
             seq_at_ref = None
             if len(ref) and len(ref) < self.sequence_length:
-                match, seq_encoding, seq_at_ref = _handle_standard_ref(
+                match, ref_sequence_encoding, seq_at_ref = _handle_standard_ref(
                     ref_encoding,
-                    seq_encoding,
+                    ref_sequence_encoding,
                     self.sequence_length,
-                    self.reference_sequence,
-                    strand)
+                    self.reference_sequence)
             elif len(ref) >= self.sequence_length:
-                match, seq_encoding, seq_at_ref = _handle_long_ref(
+                match, ref_sequence_encoding, seq_at_ref = _handle_long_ref(
                     ref_encoding,
-                    seq_encoding,
+                    ref_sequence_encoding,
                     self._start_radius,
                     self._end_radius,
-                    self.reference_sequence,
-                    strand)
+                    self.reference_sequence)
 
             if contains_unk:
                 warnings.warn("For variant ({0}, {1}, {2}, {3}, {4}, {5}), "
@@ -1008,8 +1099,17 @@ class AnalyzeSequences(object):
                               "column of the .tsv or the row_labels .txt file".format(
                                   chrom, pos, name, ref, alt, strand, seq_at_ref))
             batch_ids.append((chrom, pos, name, ref, alt, strand, match, contains_unk))
-            batch_ref_seqs.append(seq_encoding)
-            batch_alt_seqs.append(alt_encoding)
+            if strand == '-':
+                ref_sequence_encoding = get_reverse_complement_encoding(
+                    ref_sequence_encoding,
+                    self.reference_sequence.BASES_ARR,
+                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
+                alt_sequence_encoding = get_reverse_complement_encoding(
+                    alt_sequence_encoding,
+                    self.reference_sequence.BASES_ARR,
+                    self.reference_sequence.COMPLEMENTARY_BASE_DICT)
+            batch_ref_seqs.append(ref_sequence_encoding)
+            batch_alt_seqs.append(alt_sequence_encoding)
 
             if len(batch_ref_seqs) >= self.batch_size:
                 _handle_ref_alt_predictions(
@@ -1039,3 +1139,15 @@ class AnalyzeSequences(object):
 
         for r in reporters:
             r.write_to_file()
+
+    def _pad_or_truncate_sequence(self, sequence):
+        if len(sequence) < self.sequence_length:
+            sequence = _pad_sequence(
+                sequence,
+                self.sequence_length,
+                self.reference_sequence.UNK_BASE,
+            )
+        elif len(sequence) > self.sequence_length:
+            sequence = _truncate_sequence(sequence, self.sequence_length)
+
+        return sequence

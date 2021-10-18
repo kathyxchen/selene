@@ -10,7 +10,9 @@ from shutil import copytree
 import sys
 from time import strftime
 import types
+import random
 
+import numpy as np
 import torch
 
 from . import _is_lua_trained_model
@@ -319,13 +321,16 @@ def parse_configs_and_run(configs_file,
         configs = configs_file
     operations = configs["ops"]
 
-    if "train" in operations and "lr" not in configs and lr != "None":
+    if "train" in operations and "lr" not in configs and lr != None:
         configs["lr"] = float(lr)
-    elif "train" in operations and "lr" in configs and lr != "None":
+    elif "train" in operations and "lr" in configs and lr != None:
         print("Warning: learning rate specified in both the "
               "configuration dict and this method's `lr` parameter. "
               "Using the `lr` value input to `parse_configs_and_run` "
               "({0}, not {1}).".format(lr, configs["lr"]))
+    elif "train" in operations and "lr" not in configs and lr == None:
+        raise ValueError("Learning rate not specified, cannot "
+                         "fit model. Exiting.")
 
     current_run_output_dir = None
     if "output_dir" not in configs and \
@@ -352,8 +357,12 @@ def parse_configs_and_run(configs_file,
                      os.path.join(current_run_output_dir, config_out))
     if "random_seed" in configs:
         seed = configs["random_seed"]
+        random.seed(seed)
+        np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     else:
         print("Warning: no random seed specified in config file. "
               "Using a random seed ensures results are reproducible.")

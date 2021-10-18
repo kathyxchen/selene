@@ -11,6 +11,7 @@ from sklearn.metrics import average_precision_score
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
+from scipy.stats import rankdata
 
 
 logger = logging.getLogger("selene")
@@ -199,7 +200,12 @@ def compute_score(prediction, target, metric_fn,
         `(None, [])`.
     """
     feature_scores = np.ones(target.shape[1]) * np.nan
-    for index, feature_preds in enumerate(prediction.T):
+    # Deal with the case of multi-class classification, where each example only has one target value but multiple prediction values
+    if target.shape[1] == 1 and prediction.shape[1] > 1:
+        prediction = [prediction]
+    else:
+        prediction = prediction.T
+    for index, feature_preds in enumerate(prediction):
         feature_targets = target[:, index]
         if len(np.unique(feature_targets)) > 0 and \
                np.count_nonzero(feature_targets) > report_gt_feature_n_positives:
@@ -247,6 +253,34 @@ def get_feature_specific_scores(data, get_feature_from_index_fn):
     return feature_score_dict
 
 
+def auc_u_test(labels, predictions):
+    """
+    Outputs the area under the the ROC curve associated with a certain
+    set of labels and the predictions given by the training model.
+    Computed from the U statistic.
+
+    Parameters
+    ----------
+    labels: numpy.ndarray
+        Known labels of values predicted by model. Must be one dimensional.
+    predictions: numpy.ndarray
+        Value predicted by user model. Must be one dimensional, with matching
+        dimension to `labels`
+
+    Returns
+    -------
+    float
+        AUC value of given label, prediction pairs
+
+    """
+    len_pos = int(np.sum(labels))
+    len_neg = len(labels) - len_pos
+    rank_sum = np.sum(rankdata(predictions)[labels == 1])
+    u_value = rank_sum - (len_pos * (len_pos + 1)) / 2
+    auc = u_value / (len_pos * len_neg)
+    return auc
+
+
 class PerformanceMetrics(object):
     """
     Tracks and calculates metrics to evaluate how closely a model's
@@ -287,7 +321,8 @@ class PerformanceMetrics(object):
     def __init__(self,
                  get_feature_from_index_fn,
                  report_gt_feature_n_positives=10,
-                 metrics=dict(roc_auc=roc_auc_score, average_precision=average_precision_score)):
+                 metrics=dict(roc_auc=roc_auc_score,
+                              average_precision=average_precision_score)):
         """
         Creates a new object of the `PerformanceMetrics` class.
         """
@@ -438,7 +473,7 @@ class PerformanceMetrics(object):
         cols = '\t'.join(["class"] + metric_cols)
         with open(output_path, 'w+') as file_handle:
             file_handle.write("{0}\n".format(cols))
-            for feature, metric_scores in sorted(feature_scores.items()):
+            for feature, metric_scores in feature_scores.items():
                 if not metric_scores:
                     file_handle.write("{0}\t{1}\n".format(feature, "\t".join(["NA"] * len(metric_cols))))
                 else:

@@ -5,11 +5,11 @@ parts of the sequence and converting these parts into their one-hot
 encodings.
 
 """
-import numpy as np
 import pkg_resources
 import pyfaidx
 import tabix
 
+from functools import wraps
 from .sequence import Sequence
 from .sequence import sequence_to_encoding
 from .sequence import encoding_to_sequence
@@ -17,7 +17,7 @@ from .sequence import encoding_to_sequence
 def _not_blacklist_region(chrom, start, end, blacklist_tabix):
     """
     Check if the input coordinates are not overlapping with blacklist regions.
-    
+
     Parameters
     ----------
     chrom : str
@@ -29,14 +29,14 @@ def _not_blacklist_region(chrom, start, end, blacklist_tabix):
     blacklist_tabix : tabix.open or None, optional
         Default is `None`. Tabix file handle if a file of blacklist regions
         is available.
-    
+
     Returns
     -------
     bool
         False if the coordinates are overlaping with blacklist regions
         (if specified). Otherwise, return True.
-    
-    
+
+
     """
     if blacklist_tabix is not None:
         try:
@@ -190,6 +190,13 @@ class Genome(Sequence):
         Default is None (use the default base ordering of
         `['A', 'C', 'G', 'T']`). Specify a different ordering of
         DNA bases for one-hot encoding.
+    init_unpicklable : bool, optional
+        Default is False. Delays initialization until a relevant method
+        is called. This enables the object to be pickled after instantiation.
+        `init_unpicklable` must be `False` when multi-processing is needed e.g.
+        DataLoader. Set `init_unpicklable` to True if you are using this class
+        directly through Selene's API and want to access class attributes
+        without having to call on a specific method in Genome.
 
     Attributes
     ----------
@@ -203,7 +210,7 @@ class Genome(Sequence):
 
     """
 
-    BASES_ARR = np.array(['A', 'C', 'G', 'T'])
+    BASES_ARR = ['A', 'C', 'G', 'T']
     """
     This is an array with the alphabet (i.e. all possible symbols
     that may occur in a sequence). We expect that
@@ -247,28 +254,14 @@ class Genome(Sequence):
     from the alphabet, but we are uncertain which.
     """
 
-    def __init__(self, input_path, blacklist_regions=None, bases_order=None):
+    def __init__(self, input_path, blacklist_regions=None, bases_order=None, init_unpicklable=False):
         """
         Constructs a `Genome` object.
         """
-        self.genome = pyfaidx.Fasta(input_path)
-        self.chrs = sorted(self.genome.keys())
-        self.len_chrs = self._get_len_chrs()
-        self._blacklist_tabix = None
 
-        if blacklist_regions == "hg19":
-            self._blacklist_tabix = tabix.open(
-                pkg_resources.resource_filename(
-                    "selene_sdk",
-                    "sequences/data/hg19_blacklist_ENCFF001TDO.bed.gz"))
-        elif blacklist_regions == "hg38":
-            self._blacklist_tabix = tabix.open(
-                pkg_resources.resource_filename(
-                    "selene_sdk",
-                    "sequences/data/hg38.blacklist.bed.gz"))
-        elif blacklist_regions is not None:  # user-specified file
-            self._blacklist_tabix = tabix.open(
-                blacklist_regions)
+        self.input_path = input_path
+        self.blacklist_regions = blacklist_regions
+        self._initialized =False
 
         if bases_order is not None:
             bases = [str.upper(b) for b in bases_order]
@@ -280,6 +273,9 @@ class Genome(Sequence):
             self.INDEX_TO_BASE = {ix: b for (ix, b) in enumerate(bases)}
             self.update_bases_order(bases)
 
+        if init_unpicklable:
+            self._unpicklable_init()
+
     @classmethod
     def update_bases_order(cls, bases):
         cls.BASES_ARR = bases
@@ -289,7 +285,37 @@ class Genome(Sequence):
             **{b: ix for (ix, b) in enumerate(lc_bases)}}
         cls.INDEX_TO_BASE = {ix: b for (ix, b) in enumerate(bases)}
 
+    def _unpicklable_init(self):
+        if not self._initialized:
+            self.genome = pyfaidx.Fasta(self.input_path)
+            self.chrs = sorted(self.genome.keys())
+            self.len_chrs = self._get_len_chrs()
+            self._blacklist_tabix = None
 
+            if self.blacklist_regions == "hg19":
+                self._blacklist_tabix = tabix.open(
+                    pkg_resources.resource_filename(
+                        "selene_sdk",
+                        "sequences/data/hg19_blacklist_ENCFF001TDO.bed.gz"))
+            elif self.blacklist_regions == "hg38":
+                self._blacklist_tabix = tabix.open(
+                    pkg_resources.resource_filename(
+                        "selene_sdk",
+                        "sequences/data/hg38.blacklist.bed.gz"))
+            elif self.blacklist_regions is not None:  # user-specified file
+                self._blacklist_tabix = tabix.open(
+                    self.blacklist_regions)
+            self._initialized = True
+
+    def init(func):
+        # delay initialization to allow  multiprocessing
+        @wraps(func)
+        def dfunc(self, *args, **kwargs):
+            self._unpicklable_init()
+            return func(self, *args, **kwargs)
+        return dfunc
+
+    @init
     def get_chrs(self):
         """Gets the list of chromosome names.
 
@@ -301,6 +327,7 @@ class Genome(Sequence):
         """
         return self.chrs
 
+    @init
     def get_chr_lens(self):
         """Gets the name and length of each chromosome sequence in the file.
 
@@ -324,7 +351,7 @@ class Genome(Sequence):
         else:
             return self.genome[chrom][start:end].reverse.complement.seq
 
-
+    @init
     def coords_in_bounds(self, chrom, start, end):
         """
         Check if the region we want to query is within the bounds of the
@@ -353,6 +380,7 @@ class Genome(Sequence):
                              end,
                              blacklist_tabix=self._blacklist_tabix)
 
+    @init
     def get_sequence_from_coords(self,
                                  chrom,
                                  start,
@@ -405,6 +433,7 @@ class Genome(Sequence):
                                          pad=pad,
                                          blacklist_tabix=self._blacklist_tabix)
 
+    @init
     def get_encoding_from_coords(self,
                                  chrom,
                                  start,
@@ -456,6 +485,7 @@ class Genome(Sequence):
         encoding = self.sequence_to_encoding(sequence)
         return encoding
 
+    @init
     def get_encoding_from_coords_check_unk(self,
                                  chrom,
                                  start,
@@ -463,7 +493,7 @@ class Genome(Sequence):
                                  strand='+',
                                  pad=False):
         """Gets the one-hot encoding of the genomic sequence at the
-        queried coordinates and check whether the sequence contains 
+        queried coordinates and check whether the sequence contains
         unknown base(s).
 
         Parameters

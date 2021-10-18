@@ -5,7 +5,6 @@ import math
 
 import numpy as np
 import torch
-from torch.autograd import Variable
 
 from ..utils import _is_lua_trained_model
 
@@ -35,6 +34,34 @@ def get_reverse_complement(allele, complementary_base_dict):
     return ''.join(list(reversed(a_complement)))
 
 
+def get_reverse_complement_encoding(allele_encoding,
+                                    bases_arr,
+                                    complementary_base_dict):
+    """
+    Get the reverse complement of the input allele one-hot encoding.
+
+    Parameters
+    ----------
+    allele_encoding : numpy.ndarray
+        The sequence allele encoding, :math:`L \\times 4`
+    bases_arr : list(str)
+        The base ordering for the one-hot encoding
+    complementary_base_dict : dict(str: str)
+        The dictionary that maps each base to its complement
+
+    Returns
+    -------
+    np.ndarray
+        The reverse complement encoding of the allele, shape
+        :math:`L \\times 4`.
+
+    """
+    base_ixs = {b: i for (i, b) in enumerate(bases_arr)}
+    complement_indices = [
+        base_ixs[complementary_base_dict[b]] for b in bases_arr]
+    return allele_encoding[:, complement_indices][::-1, :]
+
+
 def predict(model, batch_sequences, use_cuda=False):
     """
     Return model predictions for a batch of sequences.
@@ -62,10 +89,9 @@ def predict(model, batch_sequences, use_cuda=False):
     if use_cuda:
         inputs = inputs.cuda()
     with torch.no_grad():
-        inputs = Variable(inputs)
-
         if _is_lua_trained_model(model):
-            outputs = model.forward(inputs.transpose(1, 2).unsqueeze_(2))
+            outputs = model.forward(
+                inputs.transpose(1, 2).contiguous().unsqueeze_(2))
         else:
             outputs = model.forward(inputs.transpose(1, 2))
         return outputs.data.cpu().numpy()
