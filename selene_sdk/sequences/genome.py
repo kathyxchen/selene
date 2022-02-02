@@ -347,9 +347,9 @@ class Genome(Sequence):
 
     def _genome_sequence(self, chrom, start, end, strand='+'):
         if strand == '+' or strand == '.':
-            return self.genome[chrom][start:end].seq
+            return str.upper(self.genome[chrom][start:end].seq)
         else:
-            return self.genome[chrom][start:end].reverse.complement.seq
+            return str.upper(self.genome[chrom][start:end].reverse.complement.seq)
 
     @init
     def coords_in_bounds(self, chrom, start, end):

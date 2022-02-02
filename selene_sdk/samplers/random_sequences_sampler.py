@@ -4,6 +4,7 @@ This module provides the RandomSequencesSampler class.
 from collections import namedtuple
 import logging
 import random
+import re
 
 import numpy as np
 
@@ -65,7 +66,7 @@ class RandomSequencesSampler(object):
         Default is 1000. Model is trained on sequences of `sequence_length`
         where genomic features are annotated to the center regions of
         these sequences.
-    word_length : int, optional
+    word_size : int, optional
         TODO
     mode : {'train', 'validate', 'test'}
         Default is `'train'`. The mode to run the sampler in.
@@ -86,7 +87,7 @@ class RandomSequencesSampler(object):
         documentation for `validation_holdout` for more details.
     sequence_length : int
         The length of the sequences to  train the model on.
-    word_length : int
+    word_size : int
         TODO
     modes : list(str)
         The list of modes that the sampler can be run in.
@@ -103,13 +104,15 @@ class RandomSequencesSampler(object):
                  validation_holdout=['chr6', 'chr7'],
                  test_holdout=['chr8', 'chr9'],
                  sequence_length=1000,
-                 word_length=None,
+                 word_size=None,
                  mode="train"):
         self.modes = list(self.BASE_MODES)
 
         self.seed = seed
         np.random.seed(self.seed)
         random.seed(self.seed + 1)
+
+        self.word_size = word_size
 
         # specifying a test holdout partition is optional
         if test_holdout:
@@ -261,21 +264,23 @@ class RandomSequencesSampler(object):
             return None
         strand = self.STRAND_SIDES[random.randint(0, 1)]
         retrieved_seq = \
-            self.reference_sequence.get_encoding_from_coords(
+            self.reference_sequence.get_sequence_from_coords(
                 chrom, window_start, window_end, strand)
 
-        if retrieved_seq.shape[0] == 0:
+        if len(retrieved_seq) == 0:
             logger.info("Full sequence centered at {0} position {1} "
                         "could not be retrieved. Sampling again.".format(
                             chrom, position))
             return None
-        elif np.mean(retrieved_seq==0.25) > 0.30:
+        elif len(retrieved_seq.replace('N', '')) / len(retrieved_seq) < 0.7:
             logger.info("Over 30% of the bases in the sequence centered "
                         "at {0} position {1} are ambiguous ('N'). "
                         "Sampling again.".format(chrom, position))
             return None
-
-        return retrieved_seq
+        if self.word_size is None:
+            return retrieved_seq
+        else:
+            return re.findall('.'*self.word_size + '?', retrieved_seq)
 
     def _update_randcache(self, mode=None):
         if not mode:
@@ -316,7 +321,7 @@ class RandomSequencesSampler(object):
 
         """
         mode = mode if mode else self.mode
-        sequences = np.zeros((batch_size, self.sequence_length, 4))
+        sequences = []
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -335,6 +340,6 @@ class RandomSequencesSampler(object):
             retrieve_output = self._retrieve(chrom, position)
             if retrieve_output is None:
                 continue
-            sequences[n_samples_drawn, :, :] = retrieve_output
+            sequences.append(retrieve_output)
             n_samples_drawn += 1
         return sequences
