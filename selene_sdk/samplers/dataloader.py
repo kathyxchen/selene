@@ -87,8 +87,9 @@ class _SamplerDataset(data.Dataset):
 class SamplerDataLoader(DataLoader):
     """
     A DataLoader that provides parallel sampling for any `Sampler`
-    or `FileSampler` object. SamplerDataLoader requires sampler to be 
-    initialized with `picklable=True` to enable multi-procesing.
+    or `FileSampler` object. SamplerDataLoader requires sampler objects
+    to contain no file handle when `num_workers`>1, because multiprocessing 
+    requires the object to be picklable.
 
     Parameters
     ----------
@@ -137,6 +138,10 @@ class SamplerDataLoader(DataLoader):
             "prefetch_factor": prefetch_factor,
             "collate_fn": collate_fn
             }
+        if num_workers > 1:
+            if hasattr(sampler, "initialized") and sampler.initialized:
+                raise Exception("sampler should not be used before calling"
+                                "SamplerDataLoader.")
             
         super(SamplerDataLoader, self).__init__(_SamplerDataset(sampler),**args)
 
