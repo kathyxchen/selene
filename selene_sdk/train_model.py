@@ -205,7 +205,7 @@ class TrainModel(object):
         self.sampler = data_sampler
         self.criterion = loss_criterion
         self.optimizer = optimizer_class(
-            self.model.parameters(), **optimizer_kwargs)
+            [p for p in self.model.parameters() if p.requires_grad], **optimizer_kwargs)
 
         self.batch_size = batch_size
         self.max_steps = max_steps
@@ -550,7 +550,7 @@ class TrainModel(object):
 
         #scheduler update
         if self.use_scheduler:
-            self.scheduler.step(math.ceil(self.validation_loss * 1000.0) / 1000.0)
+            self.scheduler.step(math.ceil(validation_loss * 1000.0) / 1000.0)
 
         #save best_model
         if validation_loss < self._min_loss:
