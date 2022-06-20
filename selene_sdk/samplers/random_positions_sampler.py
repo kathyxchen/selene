@@ -289,6 +289,11 @@ class RandomPositionsSampler(OnlineSampler):
         else:
             retrieved_targets = self.target.get_feature_data(
                 chrom, bin_start, bin_end)
+        if retrieved_targets is None:
+            logger.info("Target returns None. Sampling again.".format(
+                            chrom, position))
+            return None
+
         window_start = bin_start - self.surrounding_sequence_radius
         window_end = bin_end + self.surrounding_sequence_radius
         if window_end - window_start < self.sequence_length:
@@ -309,7 +314,7 @@ class RandomPositionsSampler(OnlineSampler):
             self.reference_sequence.get_encoding_from_coords(
                 chrom, window_start+r, window_end+r, strand)
 
-        if retrieved_seq.shape[0] == 0:
+        if retrieved_seq.shape[0] == 0 or retrieved_seq.shape[0] != self.sequence_length:
             logger.info("Full sequence centered at {0} position {1} "
                         "could not be retrieved. Sampling again.".format(
                             chrom, position))
@@ -319,6 +324,7 @@ class RandomPositionsSampler(OnlineSampler):
                         "at {0} position {1} are ambiguous ('N'). "
                         "Sampling again.".format(chrom, position))
             return None
+
 
 
         if self.mode in self._save_datasets and not isinstance(retrieved_targets, list):
