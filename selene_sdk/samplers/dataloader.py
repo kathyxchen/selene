@@ -28,9 +28,10 @@ class _SamplerDataset(Dataset):
     sampler : selene_sdk.samplers.Sampler
         The sampler from which to draw data.
     """
-    def __init__(self, sampler):
+    def __init__(self, sampler, transform=None):
         super(_SamplerDataset, self).__init__()
         self.sampler = sampler
+        self.transform = transform
 
     def __getitem__(self, index):
         """
@@ -60,6 +61,8 @@ class _SamplerDataset(Dataset):
         if sequences.shape[0] == 1:
             sequences = sequences[0,:]
             targets = targets[0,:]
+        if self.transform is not None:
+            sequences = self.transform(sequences)
         return sequences, targets
 
     def __len__(self):
@@ -104,6 +107,7 @@ class SamplerDataLoader(DataLoader):
     """
     def __init__(self,
                  sampler,
+                 transform=None,
                  num_workers=1,
                  batch_size=1,
                  seed=436):
@@ -121,7 +125,8 @@ class SamplerDataLoader(DataLoader):
             "worker_init_fn": worker_init_fn
         }
 
-        super(SamplerDataLoader, self).__init__(_SamplerDataset(sampler), **args)
+        super(SamplerDataLoader, self).__init__(_SamplerDataset(
+            sampler, transform=transform), **args)
         self.seed = seed
 
 
