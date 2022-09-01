@@ -106,11 +106,14 @@ class SamplerDataLoader(DataLoader):
 
     """
     def __init__(self,
-                 sampler,
+                 dataset,
                  transform=None,
                  num_workers=1,
                  batch_size=1,
-                 seed=436):
+                 seed=436,
+                 sampler=None,
+                 batch_sampler=None,
+                 shuffle=False):
         def worker_init_fn(worker_id):
             """
             This function is called to initialize each worker with different
@@ -118,15 +121,25 @@ class SamplerDataLoader(DataLoader):
             """
             np.random.seed(seed + worker_id)
 
+        if sampler is not None:
+            print("sampler")
+            print(sampler)
+        if batch_sampler is not None:
+            print("batch sampler")
+            print(batch_sampler)
+
         args = {
             "batch_size": batch_size,
             "num_workers": num_workers,
             "pin_memory": True,
-            "worker_init_fn": worker_init_fn
+            "worker_init_fn": worker_init_fn,
+            "sampler": sampler,
+            "batch_sampler": batch_sampler,
+            "shuffle": shuffle
         }
 
         super(SamplerDataLoader, self).__init__(_SamplerDataset(
-            sampler, transform=transform), **args)
+            dataset, transform=transform), **args)
         self.seed = seed
 
 
