@@ -154,10 +154,9 @@ class RandomPositionsSampler(OnlineSampler):
         self.sample_from_intervals = []
         self.interval_lengths = []
 
-        self.worker_id = None
         self.cache_modes = cache_modes
 
-        self.worker_id = None
+        self.worker_id = 0
         self.train_rng = None #default_rng()
         self.eval_rng = None #default_rng()
 
