@@ -28,10 +28,11 @@ class _SamplerDataset(Dataset):
     sampler : selene_sdk.samplers.Sampler
         The sampler from which to draw data.
     """
-    def __init__(self, sampler, transform=None):
+    def __init__(self, sampler, transform=None, mode="train"):
         super(_SamplerDataset, self).__init__()
         self.sampler = sampler
         self.transform = transform
+        self.mode = mode
 
     def __getitem__(self, index):
         """
@@ -57,7 +58,8 @@ class _SamplerDataset(Dataset):
             where :math:`T` is the number of targets predicted.
         """
         sequences, targets = self.sampler.sample(
-            batch_size=1 if isinstance(index, int) else len(index))
+            batch_size=1 if isinstance(index, int) else len(index),
+            mode=self.mode)
         if sequences.shape[0] == 1:
             sequences = sequences[0,:]
             targets = targets[0,:]
@@ -74,7 +76,11 @@ class _SamplerDataset(Dataset):
         Another workaround that is implemented is catching the StopIteration
         error while calling `next` and reinitialize the DataLoader.
         """
-        return sys.maxsize
+        if self.mode == 'train':
+            return 10000000
+        else:
+            return 1000000
+        #return sys.maxsize
 
 
 class SamplerDataLoader(DataLoader):
@@ -108,6 +114,7 @@ class SamplerDataLoader(DataLoader):
     def __init__(self,
                  dataset,
                  transform=None,
+                 mode="train",
                  num_workers=1,
                  batch_size=1,
                  seed=436,
@@ -120,13 +127,7 @@ class SamplerDataLoader(DataLoader):
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
             np.random.seed(seed + worker_id)
-
-        if sampler is not None:
-            print("sampler")
-            print(sampler)
-        if batch_sampler is not None:
-            print("batch sampler")
-            print(batch_sampler)
+            dataset.set_worker_id(worker_id)
 
         args = {
             "batch_size": batch_size,
@@ -139,7 +140,8 @@ class SamplerDataLoader(DataLoader):
         }
 
         super(SamplerDataLoader, self).__init__(_SamplerDataset(
-            dataset, transform=transform), **args)
+            dataset, transform=transform, mode=mode), **args)
+        #super(SamplerDataLoader, self).__init__(dataset, **args)
         self.seed = seed
 
 

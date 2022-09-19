@@ -9,6 +9,7 @@ import logging
 import random
 
 import numpy as np
+from numpy.random import default_rng
 
 from functools import wraps
 from .online_sampler import OnlineSampler
@@ -129,6 +130,7 @@ class RandomPositionsSampler(OnlineSampler):
                  center_bin_to_predict=200,
                  feature_thresholds=0.5,
                  mode="train",
+                 cache_modes=None,
                  save_datasets=[],
                  output_dir=None):
         super(RandomPositionsSampler, self).__init__(
@@ -144,30 +146,57 @@ class RandomPositionsSampler(OnlineSampler):
             mode=mode,
             save_datasets=save_datasets,
             output_dir=output_dir)
-
         self._sample_from_mode = {}
         self._randcache = {}
         for mode in self.modes:
             self._sample_from_mode[mode] = None
             self._randcache[mode] = {"cache_indices": None, "sample_next": 0}
-
         self.sample_from_intervals = []
         self.interval_lengths = []
+
+        self.worker_id = None
+        self.cache_modes = cache_modes
+
+        self.worker_id = None
+        self.train_rng = None #default_rng()
+        self.eval_rng = None #default_rng()
+
         self._initialized = False
+        self._reset_train = False
 
     def init(func):
         # delay initialization to allow  multiprocessing
         @wraps(func)
         def dfunc(self, *args, **kwargs):
             if not self._initialized:
+                logger.info("Initialization of sampler with mode {0}, worker {1}".format(
+                    self.mode, self.worker_id))
+
+                if self.mode == "train" and self.train_rng is None:
+                    self.seed += self.worker_id
+                    np.random.seed(self.seed)
+                    random.seed(self.seed + 1)
+                    self.train_rng = default_rng()
+                elif self.mode != "train" and self.eval_rng is None:
+                    self.seed += self.worker_id
+                    np.random.seed(self.seed)
+                    random.seed(self.seed + 1)
+                    self.eval_rng = default_rng()
+
                 if self._holdout_type == "chromosome":
                     self._partition_genome_by_chromosome()
                 else:
                      self._partition_genome_by_proportion()
-
-                for mode in self.modes:
-                    self._update_randcache(mode=mode)
+                if self.cache_modes is not None:
+                    for mode in self.cache_modes:
+                        self._update_randcache(mode=mode)
+                else:
+                    for mode in self.modes:
+                        self._update_randcache(mode=mode)
                 self._initialized = True
+            if self._reset_train and self.mode == "train":
+                self._update_randcache(mode=self.mode)
+                self._reset_train = False
             return func(self, *args, **kwargs)
         return dfunc
 
@@ -237,55 +266,88 @@ class RandomPositionsSampler(OnlineSampler):
                     indices=indices, weights=weights)
 
     def _retrieve(self, chrom, position):
-        bin_start = position - self._start_radius
-        bin_end = position + self._end_radius
-        retrieved_targets = self.target.get_feature_data(
-            chrom, bin_start, bin_end)
-        window_start = position - self._start_window_radius
-        window_end = position + self._end_window_radius
-        if window_end - window_start < self.sequence_length:
-            print(bin_start, bin_end,
-                  self._start_radius, self._end_radius,
-                  self._start_window_radius, self._end_window_radius,)
+        try:
+            bin_start = position - self._start_radius
+            bin_end = position + self._end_radius
+            retrieved_targets = self.target.get_feature_data(
+                chrom, bin_start, bin_end)
+            window_start = position - self._start_window_radius
+            window_end = position + self._end_window_radius
+            if window_end - window_start < self.sequence_length:
+                print(bin_start, bin_end,
+                      self._start_radius, self._end_radius,
+                      self._start_window_radius, self._end_window_radius,)
+                return None
+            if window_end - window_start != self.sequence_length:
+                print(bin_start, bin_end,
+                      self._start_radius, self._end_radius,
+                      self._start_window_radius, self._end_window_radius,)
+                return None
+            strand = self.STRAND_SIDES[random.randint(0, 1)]
+            retrieved_seq = \
+                self.reference_sequence.get_encoding_from_coords(
+                    chrom, window_start, window_end, strand)
+            if retrieved_seq.shape[0] == self.sequence_length + 1:
+                print("Sequence for ({0}, {1}) is 1 base too long ({0}, {2}, {3}, {4})".format(
+                    chrom, position, window_start, window_end, strand))
+                logger.info("Sequence for ({0}, {1}) is 1 base too long ({0}, {2}, {3}, {4})".format(
+                    chrom, position, window_start, window_end, strand))
+            if retrieved_seq.shape[0] == 0:
+                #logger.info("Full sequence centered at {0} position {1} "
+                #            "could not be retrieved. Sampling again.".format(
+                #                chrom, position))
+                return None
+            elif np.mean(retrieved_seq==0.25) > 0.30:
+                #print("Over 30% of the bases in the sequence centered "
+                #      "at {0} position {1} are ambiguous ('N'). "
+                #      "Sampling again.".format(chrom, position))
+                #logger.info("Over 30% of the bases in the sequence centered "
+                #            "at {0} position {1} are ambiguous ('N'). "
+                #            "Sampling again.".format(chrom, position))
+                return None
+            if self.mode in self._save_datasets:
+                feature_indices = ';'.join(
+                    [str(f) for f in np.nonzero(retrieved_targets)[0]])
+                self._save_datasets[self.mode].append(
+                    [chrom,
+                     window_start,
+                     window_end,
+                     strand,
+                     feature_indices])
+                if len(self._save_datasets[self.mode]) > 200000:
+                    self.save_dataset_to_file(self.mode)
+            return (retrieved_seq, retrieved_targets)
+        except ValueError as e:
+            print('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
+            logger.info('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
             return None
-        strand = self.STRAND_SIDES[random.randint(0, 1)]
-        retrieved_seq = \
-            self.reference_sequence.get_encoding_from_coords(
-                chrom, window_start, window_end, strand)
-
-        if retrieved_seq.shape[0] == 0:
-            logger.info("Full sequence centered at {0} position {1} "
-                        "could not be retrieved. Sampling again.".format(
-                            chrom, position))
-            return None
-        elif np.mean(retrieved_seq==0.25) > 0.30:
-            logger.info("Over 30% of the bases in the sequence centered "
-                        "at {0} position {1} are ambiguous ('N'). "
-                        "Sampling again.".format(chrom, position))
-            return None
-
-        if self.mode in self._save_datasets:
-            feature_indices = ';'.join(
-                [str(f) for f in np.nonzero(retrieved_targets)[0]])
-            self._save_datasets[self.mode].append(
-                [chrom,
-                 window_start,
-                 window_end,
-                 strand,
-                 feature_indices])
-            if len(self._save_datasets[self.mode]) > 200000:
-                self.save_dataset_to_file(self.mode)
-        return (retrieved_seq, retrieved_targets)
 
     def _update_randcache(self, mode=None):
         if not mode:
             mode = self.mode
+
+        if mode == 'train':
+            self._update_seed()
         self._randcache[mode]["cache_indices"] = np.random.choice(
             self._sample_from_mode[mode].indices,
-            size=200000,
+            size=1000000,
             replace=True,
             p=self._sample_from_mode[mode].weights)
         self._randcache[mode]["sample_next"] = 0
+
+        print("Update the cache for mode {0} (seed={2}): {1}".format(
+            mode, self._randcache[mode]['cache_indices'][:5], self.seed))
+        logger.info("Update the cache for mode {0} (seed={2}): {1}".format(
+            mode, self._randcache[mode]['cache_indices'][:5], self.seed))
+
+    def _update_seed(self):
+        self.seed += 1 + self.worker_id
+        np.random.seed(self.seed)
+        random.seed(self.seed + 1)
+        self.train_rng = default_rng()
+
+    def set_worker_id(self, worker_id):
+        self.worker_id = worker_id
 
     @init
     def sample(self, batch_size=1, mode=None):
@@ -331,10 +393,66 @@ class RandomPositionsSampler(OnlineSampler):
 
             chrom, cstart, cend = \
                 self.sample_from_intervals[rand_interval_index]
-            position = np.random.randint(cstart, cend)
+            if mode == 'train':
+                position = self.train_rng.integers(cstart, cend, size=1)[0]
+            else:
+                position = self.eval_rng.integers(cstart, cend, size=1)[0]
 
             retrieve_output = self._retrieve(chrom, position)
             if not retrieve_output:
+                continue
+            if len(retrieve_output[0]) != self.sequence_length:
+                logger.info("Error sampling ({0}, {1})".format(chrom, position))
+                continue
+            seq, seq_targets = retrieve_output
+            #print("{2}: Sampled ({0}, {1}) {3} {4}".format(chrom, position, mode, self.seed, self.worker_id))
+
+            sequences[n_samples_drawn, :, :] = seq
+            targets[n_samples_drawn, :] = seq_targets
+            n_samples_drawn += 1
+        return (sequences, targets)
+
+    @init
+    def sample_index(self, index, batch_size=1, mode=None):
+        """
+        Randomly draws a mini-batch of examples and their corresponding
+        labels.
+
+        Parameters
+        ----------
+        batch_size : int, optional
+            Default is 1. The number of examples to include in the
+            mini-batch.
+        mode : str, optional
+            Default is None. The operating mode that the object should run in.
+            If None, will use the current mode `self.mode`.
+
+        Returns
+        -------
+        sequences, targets : tuple(numpy.ndarray, numpy.ndarray)
+            A tuple containing the numeric representation of the
+            sequence examples and their corresponding labels. The
+            shape of `sequences` will be
+            :math:`B \\times L \\times N`, where :math:`B` is
+            `batch_size`, :math:`L` is the sequence length, and
+            :math:`N` is the size of the sequence type's alphabet.
+            The shape of `targets` will be :math:`B \\times F`,
+            where :math:`F` is the number of features.
+
+        """
+        mode = mode if mode else self.mode
+        sequences = np.zeros((batch_size, self.sequence_length, 4))
+        targets = np.zeros((batch_size, self.n_features))
+        n_samples_drawn = 0
+        while n_samples_drawn < batch_size:
+            rand_interval_index = \
+                self._randcache[mode]["cache_indices"][index]
+            chrom, cstart, cend = \
+                self.sample_from_intervals[rand_interval_index]
+            position = self.rng.integers(cstart, cend, size=1)[0]
+            #position = np.random.randint(cstart, cend)
+            retrieve_output = self._retrieve(chrom, position)
+            if not retrieve_output or len(retrieve_output[0]) != self.sequence_length:
                 continue
             seq, seq_targets = retrieve_output
             sequences[n_samples_drawn, :, :] = seq
