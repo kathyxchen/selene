@@ -158,7 +158,7 @@ class RandomPositionsSampler(OnlineSampler):
 
         self.worker_id = 0
         self.train_rng = None #default_rng()
-        self.eval_rng = None #default_rng()
+        self.eval_rng = default_rng()
 
         self._initialized = False
         self._reset_train = False
@@ -176,11 +176,12 @@ class RandomPositionsSampler(OnlineSampler):
                     np.random.seed(self.seed)
                     random.seed(self.seed + 1)
                     self.train_rng = default_rng()
-                elif self.mode != "train" and self.eval_rng is None:
-                    self.seed += self.worker_id
-                    np.random.seed(self.seed)
-                    random.seed(self.seed + 1)
-                    self.eval_rng = default_rng()
+                #elif self.mode != "train" and self.eval_rng is None:
+                #    self.seed += self.worker_id
+                #    np.random.seed(self.seed)
+                #    random.seed(self.seed + 1)
+                #    print('Initialize for rng {0}, {1}'.format(self.mode, self.seed))
+                #    self.eval_rng = default_rng()
 
                 if self._holdout_type == "chromosome":
                     self._partition_genome_by_chromosome()
@@ -409,7 +410,8 @@ class RandomPositionsSampler(OnlineSampler):
             sequences[n_samples_drawn, :, :] = seq
             targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
-        return (sequences, targets)
+        return sequences, targets
+        #return chrom, position, sequences, targets
 
     @init
     def sample_index(self, index, batch_size=1, mode=None):
