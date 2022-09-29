@@ -30,6 +30,7 @@ class _SamplerDataset(Dataset):
     """
     def __init__(self, sampler, transform=None, mode="train"):
         super(_SamplerDataset, self).__init__()
+        print("Initializing _SamplerDataset", type(sampler))
         self.sampler = sampler
         self.transform = transform
         self.mode = mode
@@ -113,7 +114,6 @@ class SamplerDataLoader(DataLoader):
     """
     def __init__(self,
                  dataset,
-                 transform=None,
                  mode="train",
                  num_workers=1,
                  batch_size=1,
@@ -127,7 +127,10 @@ class SamplerDataLoader(DataLoader):
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
             np.random.seed(seed + worker_id)
-            dataset.set_worker_id(worker_id)
+            try:
+                dataset.sampler.set_worker_id(worker_id)
+            except AttributeError:
+                return
 
         args = {
             "batch_size": batch_size,
@@ -139,9 +142,9 @@ class SamplerDataLoader(DataLoader):
             "shuffle": shuffle
         }
 
-        super(SamplerDataLoader, self).__init__(_SamplerDataset(
-            dataset, transform=transform, mode=mode), **args)
-        #super(SamplerDataLoader, self).__init__(dataset, **args)
+        #super(SamplerDataLoader, self).__init__(_SamplerDataset(
+        #    dataset, transform=transform, mode=mode), **args)
+        super(SamplerDataLoader, self).__init__(dataset, **args)
         self.seed = seed
 
 
