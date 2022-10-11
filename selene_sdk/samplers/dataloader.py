@@ -30,7 +30,6 @@ class _SamplerDataset(Dataset):
     """
     def __init__(self, sampler, transform=None, mode="train"):
         super(_SamplerDataset, self).__init__()
-        print("Initializing _SamplerDataset", type(sampler))
         self.sampler = sampler
         self.transform = transform
         self.mode = mode
@@ -185,11 +184,13 @@ class _H5Dataset(Dataset):
                  in_memory=False,
                  unpackbits=False,
                  sequence_key="sequences",
-                 targets_key="targets"):
+                 targets_key="targets",
+                 transform=None):
         super(_H5Dataset, self).__init__()
         self.file_path = file_path
         self.in_memory = in_memory
         self.unpackbits = unpackbits
+        self.transform = transform
 
         self._initialized = False
         self._sequence_key = sequence_key
@@ -235,8 +236,11 @@ class _H5Dataset(Dataset):
                 targets = targets[:, :self.t_len]
             else:
                 targets = targets[:self.t_len]
-        return (torch.from_numpy(sequence.astype(np.float32)),
-                torch.from_numpy(targets.astype(np.float32)))
+        sequence = torch.from_numpy(sequence.astype(np.float32))
+        targets = torch.from_numpy(targets.astype(np.float32))
+        if self.transform is not None:
+             sequence = self.transform(sequence)
+        return sequence, targets
 
     @init
     def __len__(self):
@@ -311,20 +315,34 @@ class H5DataLoader(DataLoader):
 
     """
     def __init__(self,
-                 filepath,
-                 in_memory=False,
+                 dataset,
+                 #in_memory=False,
                  num_workers=1,
                  use_subset=None,
                  batch_size=1,
-                 shuffle=True,
-                 unpackbits=False,
-                 sequence_key="sequences",
-                 targets_key="targets"):
+                 seed=436,
+                 sampler=None,
+                 batch_sampler=None,
+                 shuffle=True,):
+                 #unpackbits=False,
+                 #sequence_key="sequences",
+                 #targets_key="targets"):
+        def worker_init_fn(worker_id):
+            np.random.seed(seed + worker_id)
+
         args = {
             "batch_size": batch_size,
-            "num_workers": 0 if in_memory else num_workers,
-            "pin_memory": True
+            "pin_memory": True,
+            "worker_init_fn": worker_init_fn,
+            "sampler": sampler,
+            "batch_sampler": batch_sampler
         }
+
+        if hasattr(dataset, 'in_memory'):
+            args['num_workers'] = 0 if dataset.in_memory else num_workers
+        else:
+            args['num_workers'] = num_workers
+
         if use_subset is not None:
             from torch.utils.data.sampler import SubsetRandomSampler
             if isinstance(use_subset, int):
@@ -334,10 +352,10 @@ class H5DataLoader(DataLoader):
             args["sampler"] = SubsetRandomSampler(use_subset)
         else:
             args["shuffle"] = shuffle
-        super(H5DataLoader, self).__init__(
-            _H5Dataset(filepath,
-                       in_memory=in_memory,
-                       unpackbits=unpackbits,
-                       sequence_key=sequence_key,
-                       targets_key=targets_key),
-            **args)
+        super(H5DataLoader, self).__init__(dataset, **args)
+        #    _H5Dataset(filepath,
+        #               in_memory=in_memory,
+        #               unpackbits=unpackbits,
+        #               sequence_key=sequence_key,
+        #               targets_key=targets_key),
+        #    **args)
