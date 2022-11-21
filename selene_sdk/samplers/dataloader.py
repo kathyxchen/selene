@@ -236,10 +236,12 @@ class _H5Dataset(Dataset):
                 targets = targets[:, :self.t_len]
             else:
                 targets = targets[:self.t_len]
+
+        if self.transform is not None:
+             sequence = np.vstack(self.transform(sequence))
+
         sequence = torch.from_numpy(sequence.astype(np.float32))
         targets = torch.from_numpy(targets.astype(np.float32))
-        if self.transform is not None:
-             sequence = self.transform(sequence)
         return sequence, targets
 
     @init
