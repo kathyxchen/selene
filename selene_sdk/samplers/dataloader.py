@@ -28,11 +28,12 @@ class _SamplerDataset(Dataset):
     sampler : selene_sdk.samplers.Sampler
         The sampler from which to draw data.
     """
-    def __init__(self, sampler, transform=None, mode="train"):
+    def __init__(self, sampler, transform=None, mode="train", return_coords=False):
         super(_SamplerDataset, self).__init__()
         self.sampler = sampler
         self.transform = transform
         self.mode = mode
+        self.return_coords = return_coords
 
     def __getitem__(self, index):
         """
@@ -57,14 +58,22 @@ class _SamplerDataset(Dataset):
             The shape of `targets` will be :math:`I \\times T`,
             where :math:`T` is the number of targets predicted.
         """
-        sequences, targets = self.sampler.sample(
+        outputs = self.sampler.sample(
             batch_size=1 if isinstance(index, int) else len(index),
-            mode=self.mode)
+            mode=self.mode,
+            return_coords=self.return_coords)
+        sequences, targets, coords = None, None, None
+        if self.return_coords:
+            sequences, targets, coords = outputs
+        else:
+            sequences, targets = outputs
         if sequences.shape[0] == 1:
             sequences = sequences[0,:]
             targets = targets[0,:]
         if self.transform is not None:
             sequences = self.transform(sequences)
+        if self.return_coords:
+            return sequences, targets, coords
         return sequences, targets
 
     def __len__(self):

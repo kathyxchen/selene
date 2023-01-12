@@ -316,7 +316,7 @@ class RandomPositionsSampler(OnlineSampler):
                      feature_indices])
                 if len(self._save_datasets[self.mode]) > 200000:
                     self.save_dataset_to_file(self.mode)
-            return (retrieved_seq, retrieved_targets)
+            return (retrieved_seq, retrieved_targets, (chrom, position, strand))
         except ValueError as e:
             print('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
             logger.info('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
@@ -350,7 +350,7 @@ class RandomPositionsSampler(OnlineSampler):
         self.worker_id = worker_id
 
     @init
-    def sample(self, batch_size=1, mode=None):
+    def sample(self, batch_size=1, mode=None, return_coords=False):
         """
         Randomly draws a mini-batch of examples and their corresponding
         labels.
@@ -380,6 +380,7 @@ class RandomPositionsSampler(OnlineSampler):
         mode = mode if mode else self.mode
         sequences = np.zeros((batch_size, self.sequence_length, 4))
         targets = np.zeros((batch_size, self.n_features))
+        coords = []
         n_samples_drawn = 0
         while n_samples_drawn < batch_size:
             sample_index = self._randcache[mode]["sample_next"]
@@ -404,12 +405,14 @@ class RandomPositionsSampler(OnlineSampler):
             if len(retrieve_output[0]) != self.sequence_length:
                 logger.info("Error sampling ({0}, {1})".format(chrom, position))
                 continue
-            seq, seq_targets = retrieve_output
-            #print("{2}: Sampled ({0}, {1}) {3} {4}".format(chrom, position, mode, self.seed, self.worker_id))
+            seq, seq_targets, coord = retrieve_output
 
             sequences[n_samples_drawn, :, :] = seq
             targets[n_samples_drawn, :] = seq_targets
+            coords.append(coord)
             n_samples_drawn += 1
+        if return_coords:
+            return sequences, targets, coords
         return sequences, targets
         #return chrom, position, sequences, targets
 
