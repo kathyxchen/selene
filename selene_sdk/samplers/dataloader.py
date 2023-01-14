@@ -213,7 +213,7 @@ class _H5Dataset(Dataset):
                 self.db = h5py.File(self.file_path, 'r')
                 if self.unpackbits:
                     self.s_len = self.db['{0}_length'.format(self._sequence_key)][()]
-                    self.t_len = self.db['{0}_length'.format(self._targets_key)][()]
+                    #self.t_len = self.db['{0}_length'.format(self._targets_key)][()]
                 if self.in_memory:
                     self.sequences = np.asarray(self.db[self._sequence_key])
                     self.targets = np.asarray(self.db[self._targets_key])
@@ -231,20 +231,20 @@ class _H5Dataset(Dataset):
         sequence = self.sequences[index, :, :]
         targets = self.targets[index, :]
         if self.unpackbits:
-            sequence = np.unpackbits(sequence, axis=-2)
+            sequence = np.unpackbits(sequence.astype(np.uint8), axis=-2)
             nulls = np.sum(sequence, axis=-1) == sequence.shape[-1]
             sequence = sequence.astype(float)
             sequence[nulls, :] = 1.0 / sequence.shape[-1]
-            targets = np.unpackbits(
-                targets, axis=-1).astype(float)
+            #targets = np.unpackbits(
+            #    targets, axis=-1).astype(float)
             if sequence.ndim == 3:
                 sequence = sequence[:, :self.s_len, :]
             else:
                 sequence = sequence[:self.s_len, :]
-            if targets.ndim == 2:
-                targets = targets[:, :self.t_len]
-            else:
-                targets = targets[:self.t_len]
+            #if targets.ndim == 2:
+            #    targets = targets[:, :self.t_len]
+            #else:
+            #    targets = targets[:self.t_len]
 
         if self.transform is not None:
              sequence = self.transform(sequence)
