@@ -194,7 +194,8 @@ class _H5Dataset(Dataset):
                  unpackbits=False,
                  sequence_key="sequences",
                  targets_key="targets",
-                 transform=None):
+                 transform=None,
+                 use_additional=False):
         super(_H5Dataset, self).__init__()
         self.file_path = file_path
         self.in_memory = in_memory
@@ -204,6 +205,7 @@ class _H5Dataset(Dataset):
         self._initialized = False
         self._sequence_key = sequence_key
         self._targets_key = targets_key
+        self.use_additional = use_additional
 
     def init(func):
         # delay initialization to allow multiprocessing
@@ -220,6 +222,13 @@ class _H5Dataset(Dataset):
                 else:
                     self.sequences = self.db[self._sequence_key]
                     self.targets = self.db[self._targets_key]
+
+                self.additional = None
+                if self.in_memory and self.use_additional:
+                    self.additional = np.asarray(self.db['additional'])
+                elif not self.in_memory and self.use_additional:
+                    self.additional = self.db['additional']
+
                 self._initialized = True
             return func(self, *args, **kwargs)
         return dfunc
@@ -251,6 +260,10 @@ class _H5Dataset(Dataset):
 
         #sequence = [torch.from_numpy(s.astype(np.float32))
         #targets = torch.from_numpy(targets.astype(np.float32))
+
+        if self.use_additional:
+            additional = self.additional[index]
+            return sequence, targets, additional
         return sequence, targets
 
     @init
