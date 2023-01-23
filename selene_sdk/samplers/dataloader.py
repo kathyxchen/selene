@@ -3,6 +3,7 @@ This module provides the `SamplerDataLoader` and  `SamplerDataset` classes,
 which allow parallel sampling for any Sampler using
 torch DataLoader mechanism.
 """
+import random
 import  sys
 
 import h5py
@@ -353,6 +354,11 @@ class H5DataLoader(DataLoader):
                  #targets_key="targets"):
         def worker_init_fn(worker_id):
             np.random.seed(seed + worker_id)
+            torch.manual_seed(seed + worker_id)
+            torch.cuda.manual_seed(seed + worker_id)
+            torch.cuda.manual_seed_all(seed + worker_id)
+            random.seed(seed + worker_id)
+            torch.manual_seed(seed + worker_id)
 
         args = {
             "batch_size": batch_size,
