@@ -71,6 +71,8 @@ class _SamplerDataset(Dataset):
         if sequences.shape[0] == 1:
             sequences = sequences[0,:]
             targets = targets[0,:]
+            if self.return_coords:
+                coords = coords[0]
         if self.transform is not None:
             sequences = self.transform(sequences)
         if self.return_coords:
@@ -87,9 +89,9 @@ class _SamplerDataset(Dataset):
         error while calling `next` and reinitialize the DataLoader.
         """
         if self.mode == 'train':
-            return 10000000
+            return 100000000
         else:
-            return 1000000
+            return 10000000
         #return sys.maxsize
 
 

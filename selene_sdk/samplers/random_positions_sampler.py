@@ -316,7 +316,7 @@ class RandomPositionsSampler(OnlineSampler):
                      feature_indices])
                 if len(self._save_datasets[self.mode]) > 200000:
                     self.save_dataset_to_file(self.mode)
-            return (retrieved_seq, retrieved_targets, (chrom, position, strand))
+            return (retrieved_seq, retrieved_targets, ('{0}_{1}_{2}'.format(chrom, position, strand),))
         except ValueError as e:
             print('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
             logger.info('ValueError: sampled ({0}, {1}) and got {2}'.format(chrom, position, e))
