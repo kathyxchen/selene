@@ -89,9 +89,9 @@ class _SamplerDataset(Dataset):
         error while calling `next` and reinitialize the DataLoader.
         """
         if self.mode == 'train':
-            return 100000000
+            return 20000000
         else:
-            return 10000000
+            return 1000000
         #return sys.maxsize
 
 
@@ -132,12 +132,20 @@ class SamplerDataLoader(DataLoader):
                  sampler=None,
                  batch_sampler=None,
                  shuffle=False):
+
+        g = torch.Generator()
+        g.manual_seed(seed)
+
         def worker_init_fn(worker_id):
             """
             This function is called to initialize each worker with different
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
-            np.random.seed(seed + worker_id)
+            worker_seed = torch.initial_seed() % 2**32
+            print(worker_seed)
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
+            #np.random.seed(seed + worker_id)
             try:
                 dataset.sampler.set_worker_id(worker_id)
             except AttributeError:
@@ -150,7 +158,8 @@ class SamplerDataLoader(DataLoader):
             "worker_init_fn": worker_init_fn,
             "sampler": sampler,
             "batch_sampler": batch_sampler,
-            "shuffle": shuffle
+            "shuffle": shuffle,
+            "generator": g,
         }
 
         #super(SamplerDataLoader, self).__init__(_SamplerDataset(
@@ -354,20 +363,29 @@ class H5DataLoader(DataLoader):
                  #unpackbits=False,
                  #sequence_key="sequences",
                  #targets_key="targets"):
+
+        g = torch.Generator()
+        g.manual_seed(seed)
+
         def worker_init_fn(worker_id):
-            np.random.seed(seed + worker_id)
-            torch.manual_seed(seed + worker_id)
-            torch.cuda.manual_seed(seed + worker_id)
-            torch.cuda.manual_seed_all(seed + worker_id)
-            random.seed(seed + worker_id)
-            torch.manual_seed(seed + worker_id)
+            worker_seed = torch.initial_seed() % 2**32
+            print(worker_seed)
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
+            #np.random.seed(seed + worker_id)
+            #torch.manual_seed(seed + worker_id)
+            #torch.cuda.manual_seed(seed + worker_id)
+            #torch.cuda.manual_seed_all(seed + worker_id)
+            #random.seed(seed + worker_id)
+            #torch.manual_seed(seed + worker_id)
 
         args = {
             "batch_size": batch_size,
             "pin_memory": True,
             "worker_init_fn": worker_init_fn,
             "sampler": sampler,
-            "batch_sampler": batch_sampler
+            "batch_sampler": batch_sampler,
+            "generator": g
         }
 
         if hasattr(dataset, 'in_memory'):
