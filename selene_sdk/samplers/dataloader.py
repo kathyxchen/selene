@@ -142,10 +142,11 @@ class SamplerDataLoader(DataLoader):
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
             worker_seed = torch.initial_seed() % 2**32
-            print(worker_seed)
+            print('worker_init_fn', worker_seed, worker_id)
             np.random.seed(worker_seed)
             random.seed(worker_seed)
             #np.random.seed(seed + worker_id)
+            #random.seed(seed + worker_id)
             try:
                 dataset.sampler.set_worker_id(worker_id)
             except AttributeError:
@@ -373,10 +374,10 @@ class H5DataLoader(DataLoader):
             np.random.seed(worker_seed)
             random.seed(worker_seed)
             #np.random.seed(seed + worker_id)
+            #random.seed(seed + worker_id)
             #torch.manual_seed(seed + worker_id)
             #torch.cuda.manual_seed(seed + worker_id)
             #torch.cuda.manual_seed_all(seed + worker_id)
-            #random.seed(seed + worker_id)
             #torch.manual_seed(seed + worker_id)
 
         args = {
