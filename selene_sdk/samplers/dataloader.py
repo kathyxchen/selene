@@ -277,7 +277,7 @@ class _H5Dataset(Dataset):
         if self.use_additional:
             additional = self.additional[index]
             return sequence, targets, additional
-        return sequence, targets
+        return sequence, targets, index
 
     @init
     def __len__(self):
@@ -370,9 +370,10 @@ class H5DataLoader(DataLoader):
 
         def worker_init_fn(worker_id):
             worker_seed = torch.initial_seed() % 2**32
-            print(worker_seed)
+            print("Worker seed", worker_seed)
             np.random.seed(worker_seed)
             random.seed(worker_seed)
+            torch.manual_seed(worker_seed)
             #np.random.seed(seed + worker_id)
             #random.seed(seed + worker_id)
             #torch.manual_seed(seed + worker_id)
