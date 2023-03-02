@@ -277,7 +277,7 @@ class _H5Dataset(Dataset):
         if self.use_additional:
             additional = self.additional[index]
             return sequence, targets, additional
-        return sequence, targets, index
+        return sequence, targets
 
     @init
     def __len__(self):
