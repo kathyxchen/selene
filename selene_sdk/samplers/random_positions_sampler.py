@@ -240,7 +240,12 @@ class RandomPositionsSampler(OnlineSampler):
     def _partition_genome_by_chromosome(self):
         for mode in self.modes:
             self._sample_from_mode[mode] = SampleIndices([], [])
-        for index, (chrom, len_chrom) in enumerate(self.reference_sequence.get_chr_lens()):
+        index = 0
+        for (chrom, len_chrom) in self.reference_sequence.get_chr_lens():
+            if '_' in chrom:
+                continue
+            if 'M' in chrom:
+                continue
             if chrom in self.validation_holdout:
                 self._sample_from_mode["validate"].indices.append(
                     index)
@@ -256,7 +261,7 @@ class RandomPositionsSampler(OnlineSampler):
                  self.sequence_length,
                  len_chrom - self.sequence_length))
             self.interval_lengths.append(len_chrom - 2 * self.sequence_length)
-
+            index += 1
         for mode in self.modes:
             sample_indices = self._sample_from_mode[mode].indices
             indices, weights = get_indices_and_probabilities(
