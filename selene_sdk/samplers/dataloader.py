@@ -141,12 +141,12 @@ class SamplerDataLoader(DataLoader):
             This function is called to initialize each worker with different
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
-            worker_seed = torch.initial_seed() % 2**32
-            print('worker_init_fn', worker_seed, worker_id)
-            np.random.seed(worker_seed)
-            random.seed(worker_seed)
-            #np.random.seed(seed + worker_id)
-            #random.seed(seed + worker_id)
+            #worker_seed = torch.initial_seed() % 2**32
+            #print('worker_init_fn', worker_seed, worker_id)
+            #np.random.seed(worker_seed)
+            #random.seed(worker_seed)
+            np.random.seed(seed + worker_id)
+            random.seed(seed + worker_id)
             try:
                 dataset.sampler.set_worker_id(worker_id)
             except AttributeError:
@@ -208,7 +208,7 @@ class _H5Dataset(Dataset):
                  sequence_key="sequences",
                  targets_key="targets",
                  transform=None,
-                 use_additional=False):
+                 use_additional=None):
         super(_H5Dataset, self).__init__()
         self.file_path = file_path
         self.in_memory = in_memory
@@ -237,10 +237,10 @@ class _H5Dataset(Dataset):
                     self.targets = self.db[self._targets_key]
 
                 self.additional = None
-                if self.in_memory and self.use_additional:
-                    self.additional = np.asarray(self.db['additional'])
-                elif not self.in_memory and self.use_additional:
-                    self.additional = self.db['additional']
+                if self.in_memory and self.use_additional is not None:
+                    self.additional = np.asarray(self.db[self.use_additional])
+                elif not self.in_memory and self.use_additional is not None:
+                    self.additional = self.db[self.use_additional]
 
                 self._initialized = True
             return func(self, *args, **kwargs)
