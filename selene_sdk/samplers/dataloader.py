@@ -133,8 +133,8 @@ class SamplerDataLoader(DataLoader):
                  batch_sampler=None,
                  shuffle=False):
 
-        g = torch.Generator()
-        g.manual_seed(seed)
+        #g = torch.Generator()
+        #g.manual_seed(seed)
 
         def worker_init_fn(worker_id):
             """
@@ -160,7 +160,7 @@ class SamplerDataLoader(DataLoader):
             "sampler": sampler,
             "batch_sampler": batch_sampler,
             "shuffle": shuffle,
-            "generator": g,
+            #"generator": g,
         }
 
         #super(SamplerDataLoader, self).__init__(_SamplerDataset(
