@@ -331,7 +331,8 @@ class RandomPositionsSampler(OnlineSampler):
         if not mode:
             mode = self.mode
 
-        self._update_seed()
+        if mode == 'train':  # i remove this in the latest changes
+            self._update_seed()
         self._randcache[mode]["cache_indices"] = np.random.choice(
             self._sample_from_mode[mode].indices,
             size=1000000,
@@ -349,7 +350,8 @@ class RandomPositionsSampler(OnlineSampler):
         np.random.seed(self.seed)
         random.seed(self.seed + 1)
         self.train_rng = default_rng() #self.seed)
-        self.eval_rng = default_rng() #self.seed)
+        # i re-comment this in in the latest changes
+        #self.eval_rng = default_rng() #self.seed)
 
     def set_worker_id(self, worker_id):
         self.worker_id = worker_id

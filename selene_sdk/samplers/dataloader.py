@@ -89,7 +89,7 @@ class _SamplerDataset(Dataset):
         error while calling `next` and reinitialize the DataLoader.
         """
         if self.mode == 'train':
-            return 20000000
+            return 10000000
         else:
             return 1000000
         #return sys.maxsize
