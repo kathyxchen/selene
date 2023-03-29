@@ -268,15 +268,14 @@ class _H5Dataset(Dataset):
             #else:
             #    targets = targets[:self.t_len]
 
-        if self.transform is not None:
+        if self.transform is not None and self.use_additional is not None:
+            sequence = self.transform(sequence, additional=self.additional[index])
+        elif self.transform is not None:
              sequence = self.transform(sequence)
 
-        #sequence = [torch.from_numpy(s.astype(np.float32))
-        #targets = torch.from_numpy(targets.astype(np.float32))
-
-        if self.use_additional:
-            additional = self.additional[index]
-            return sequence, targets, additional
+        if self.use_additional and self.transform is None:
+            # this only happens with expr dataloader case
+            return sequence, targets, self.additional[index]
         return sequence, targets
 
     @init
