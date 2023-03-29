@@ -133,20 +133,20 @@ class SamplerDataLoader(DataLoader):
                  batch_sampler=None,
                  shuffle=False):
 
-        #g = torch.Generator()
-        #g.manual_seed(seed)
+        g = torch.Generator()
+        g.manual_seed(seed)
 
         def worker_init_fn(worker_id):
             """
             This function is called to initialize each worker with different
             numpy seeds (torch seeds are set by DataLoader automatically).
             """
-            #worker_seed = torch.initial_seed() % 2**32
-            #print('worker_init_fn', worker_seed, worker_id)
-            #np.random.seed(worker_seed)
-            #random.seed(worker_seed)
-            np.random.seed(seed + worker_id)
-            random.seed(seed + worker_id)
+            worker_seed = torch.initial_seed() % 2**32
+            print('worker_init_fn', worker_seed, worker_id)
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
+            #np.random.seed(seed + worker_id)
+            #random.seed(seed + worker_id)
             try:
                 dataset.sampler.set_worker_id(worker_id)
             except AttributeError:
@@ -160,7 +160,7 @@ class SamplerDataLoader(DataLoader):
             "sampler": sampler,
             "batch_sampler": batch_sampler,
             "shuffle": shuffle,
-            #"generator": g,
+            "generator": g,
         }
 
         #super(SamplerDataLoader, self).__init__(_SamplerDataset(

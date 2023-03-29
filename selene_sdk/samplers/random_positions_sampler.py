@@ -158,7 +158,7 @@ class RandomPositionsSampler(OnlineSampler):
 
         self.worker_id = 0
         self.train_rng = None #default_rng()
-        self.eval_rng = default_rng() #seed=self.seed)
+        self.eval_rng = default_rng(seed=self.seed)
 
         self._initialized = False
         self._reset_train = False
@@ -175,7 +175,7 @@ class RandomPositionsSampler(OnlineSampler):
                     self.seed += self.worker_id
                     np.random.seed(self.seed)
                     random.seed(self.seed + 1)
-                    self.train_rng = default_rng() #self.seed)
+                    self.train_rng = default_rng(self.seed)
                 #elif self.mode != "train" and self.eval_rng is None:
                 #    self.seed += self.worker_id
                 #    np.random.seed(self.seed)
@@ -331,8 +331,7 @@ class RandomPositionsSampler(OnlineSampler):
         if not mode:
             mode = self.mode
 
-        if mode == 'train':  # i remove this in the latest changes
-            self._update_seed()
+        self._update_seed()
         self._randcache[mode]["cache_indices"] = np.random.choice(
             self._sample_from_mode[mode].indices,
             size=1000000,
@@ -349,9 +348,8 @@ class RandomPositionsSampler(OnlineSampler):
         self.seed += 1 + self.worker_id
         np.random.seed(self.seed)
         random.seed(self.seed + 1)
-        self.train_rng = default_rng() #self.seed)
-        # i re-comment this in in the latest changes
-        #self.eval_rng = default_rng() #self.seed)
+        self.train_rng = default_rng(self.seed)
+        self.eval_rng = default_rng(self.seed)
 
     def set_worker_id(self, worker_id):
         self.worker_id = worker_id
