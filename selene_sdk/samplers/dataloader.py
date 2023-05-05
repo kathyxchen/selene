@@ -4,7 +4,7 @@ which allow parallel sampling for any Sampler using
 torch DataLoader mechanism.
 """
 import random
-import  sys
+import sys
 
 import h5py
 import numpy as np
@@ -145,8 +145,6 @@ class SamplerDataLoader(DataLoader):
             print('worker_init_fn', worker_seed, worker_id)
             np.random.seed(worker_seed)
             random.seed(worker_seed)
-            #np.random.seed(seed + worker_id)
-            #random.seed(seed + worker_id)
             try:
                 dataset.sampler.set_worker_id(worker_id)
             except AttributeError:
@@ -352,7 +350,6 @@ class H5DataLoader(DataLoader):
     """
     def __init__(self,
                  dataset,
-                 #in_memory=False,
                  num_workers=1,
                  use_subset=None,
                  batch_size=1,
@@ -360,9 +357,6 @@ class H5DataLoader(DataLoader):
                  sampler=None,
                  batch_sampler=None,
                  shuffle=True,):
-                 #unpackbits=False,
-                 #sequence_key="sequences",
-                 #targets_key="targets"):
 
         g = torch.Generator()
         g.manual_seed(seed)
@@ -373,12 +367,6 @@ class H5DataLoader(DataLoader):
             np.random.seed(worker_seed)
             random.seed(worker_seed)
             torch.manual_seed(worker_seed)
-            #np.random.seed(seed + worker_id)
-            #random.seed(seed + worker_id)
-            #torch.manual_seed(seed + worker_id)
-            #torch.cuda.manual_seed(seed + worker_id)
-            #torch.cuda.manual_seed_all(seed + worker_id)
-            #torch.manual_seed(seed + worker_id)
 
         args = {
             "batch_size": batch_size,
@@ -404,9 +392,3 @@ class H5DataLoader(DataLoader):
         else:
             args["shuffle"] = shuffle
         super(H5DataLoader, self).__init__(dataset, **args)
-        #    _H5Dataset(filepath,
-        #               in_memory=in_memory,
-        #               unpackbits=unpackbits,
-        #               sequence_key=sequence_key,
-        #               targets_key=targets_key),
-        #    **args)
