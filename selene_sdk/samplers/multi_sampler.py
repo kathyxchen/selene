@@ -267,7 +267,7 @@ class MultiSampler(Sampler):
                 targets_mat.append(tgts)
                 count += batch_size
             remainder = batch_size - (count - n_samples)
-            data, tgts = self.sample(batch_size=remainder)
+            data, tgts = self.sample(batch_size=remainder, mode=mode)
             data_and_targets.append((data, tgts))
             targets_mat.append(tgts)
             targets_mat = np.vstack(targets_mat)
