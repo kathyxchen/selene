@@ -206,7 +206,8 @@ class _H5Dataset(Dataset):
                  sequence_key="sequences",
                  targets_key="targets",
                  transform=None,
-                 use_additional=None):
+                 use_additional=None,
+                 sequence_len=None):
         super(_H5Dataset, self).__init__()
         self.file_path = file_path
         self.in_memory = in_memory
@@ -215,6 +216,7 @@ class _H5Dataset(Dataset):
 
         self._initialized = False
         self._sequence_key = sequence_key
+        self._sequence_len = sequence_len
         self._targets_key = targets_key
         self.use_additional = use_additional
 
@@ -265,7 +267,15 @@ class _H5Dataset(Dataset):
             #    targets = targets[:, :self.t_len]
             #else:
             #    targets = targets[:self.t_len]
-
+        if self._sequence_len is not None:
+            if sequence.ndim == 3:
+                mid = sequence.shape[1] // 2
+                s, e = mid - self._sequence_len // 2, mid + self._sequence_len // 2
+                sequence = sequence[:, s:e, :]
+            else:
+                mid = sequence.shape[0] // 2
+                s, e = mid - self._sequence_len // 2, mid + self._sequence_len // 2
+                sequence = sequence[s:e]
         if self.transform is not None and self.use_additional is not None:
             sequence = self.transform(sequence, additional=self.additional[index])
         elif self.transform is not None:
