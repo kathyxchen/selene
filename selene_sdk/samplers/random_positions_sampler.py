@@ -421,6 +421,7 @@ class RandomPositionsSampler(OnlineSampler):
                 seq, seq_targets = retrieve_output
                 sequences[n_samples_drawn, :, :] = seq
                 if isinstance(targets, list):
+                    assert isinstance(seq_targets, (list, tuple))
                     for target, seq_target in zip(targets, seq_targets):
                         target[n_samples_drawn, :] = seq_target
                 else:
