@@ -283,16 +283,20 @@ class RandomPositionsSampler(OnlineSampler):
     def _retrieve(self, chrom, position):
         bin_start = position - self._start_radius
         bin_end = position + self._end_radius
-        if isinstance(self.target, list):
-            retrieved_targets = [t.get_feature_data(
-                    chrom, bin_start, bin_end) for t in self.target]
+        if self.target is not None:
+            if isinstance(self.target, list):
+                retrieved_targets = [t.get_feature_data(
+                        chrom, bin_start, bin_end) for t in self.target]
+            else:
+                retrieved_targets = self.target.get_feature_data(
+                    chrom, bin_start, bin_end)
+            if retrieved_targets is None:
+                logger.info("Target returns None. Sampling again.".format(
+                                chrom, position))
+                return None
         else:
-            retrieved_targets = self.target.get_feature_data(
-                chrom, bin_start, bin_end)
-        if retrieved_targets is None:
-            logger.info("Target returns None. Sampling again.".format(
-                            chrom, position))
-            return None
+            retrieved_targets = None
+
 
         window_start = bin_start - self.surrounding_sequence_radius
         window_end = bin_end + self.surrounding_sequence_radius
@@ -384,7 +388,9 @@ class RandomPositionsSampler(OnlineSampler):
         else:
             sequences = np.zeros((batch_size, self.sequence_length, 4))
             
-            if isinstance(self.target, list):
+            if self.target is None:
+                targets = None
+            elif isinstance(self.target, list):
                 targets = [np.zeros((batch_size, *t.shape)) for t in self.target]
             elif isinstance(self.target.shape, list):
                 targets = [np.zeros((batch_size, *tshape)) for tshape in self.target.shape]
@@ -424,14 +430,21 @@ class RandomPositionsSampler(OnlineSampler):
                     assert isinstance(seq_targets, (list, tuple))
                     for target, seq_target in zip(targets, seq_targets):
                         target[n_samples_drawn, :] = seq_target
-                else:
+                elif targets is not None:
                     targets[n_samples_drawn, :] = seq_targets
             n_samples_drawn += 1
             
+
         if return_coordinates:
             if coordinates_only:
                 return coords
             else:
-                return sequences, targets, coords
+                if target is None:
+                    return sequences, coords
+                else:
+                    return sequences, targets, coords
         else:
-            return sequences, targets
+            if targets is None:
+                return sequences,
+            else:
+                return sequences, targets

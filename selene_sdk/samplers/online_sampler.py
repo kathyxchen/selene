@@ -214,9 +214,12 @@ class OnlineSampler(Sampler, metaclass=ABCMeta):
                 feature_thresholds=feature_thresholds)
         elif isinstance(target, Target) or isinstance(target, list):
             self.target = target
+        elif target is None:
+            self.target = None
         else:
             raise ValueError("target must be one of str, "
-            "selene_sdk.targets.Target object, or list")
+            "selene_sdk.targets.Target object, list, or None")
+            
         self._save_filehandles = {}
 
     def get_feature_from_index(self, index):
